@@ -32,7 +32,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@changesets/cli": "^3.0.3",
+    "esbuild": "^0.28.2",
     "husky": "^9.1.7",
+    "tsup": "^8.5.1",
     "vitepress": "^1.6.0"
   },
   "engines": {
@@ -42,5 +44,13 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/paladini/harness-score.git"
+  },
+  "overrides": {
+    "vitepress": {
+      "vite": "6.4.4"
+    },
+    "tsup": {
+      "esbuild": "0.28.2"
+    }
   }
 }
