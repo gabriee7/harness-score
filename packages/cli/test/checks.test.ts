@@ -606,7 +606,68 @@ describe('ci checks', () => {
   });
 
   test('CI-02 and CI-03 inspect a nested pipeline file', async () => {
-    const ctx = fakeContext({ 'backend/Jenkinsfile': 'sh "npm test"\nsh "npm run lint"' });
+    const ctx = fakeContext({ 'backend/Jenkinsfile': 'bat "npm test"\npowershell(script: "npm run lint")' });
+    expect((await check('CI-02')).run(ctx).passed).toBe(true);
+    expect((await check('CI-03')).run(ctx).passed).toBe(true);
+  });
+
+  test('CI-02 and CI-03 ignore workflow labels and inspect only executed commands', async () => {
+    const testLabel = fakeContext({
+      '.github/workflows/ci.yml':
+        'name: Test\njobs:\n  check:\n    steps:\n      - name: Test\n        run: echo preparing the release',
+    });
+    expect((await check('CI-02')).run(testLabel).passed).toBe(false);
+
+    const lintLabel = fakeContext({
+      'composer.json': JSON.stringify({ scripts: { teste: 'vendor/bin/pest' } }),
+      '.github/workflows/ci.yml':
+        'jobs:\n  check:\n    steps:\n      - name: Lint\n        run: composer teste',
+    });
+    expect((await check('CI-02')).run(lintLabel).passed).toBe(true);
+    expect((await check('CI-03')).run(lintLabel).passed).toBe(false);
+  });
+
+  test('CI-02 and CI-03 continue to match executed commands across supported YAML providers', async () => {
+    const cases = [
+      ['.gitlab-ci.yml', 'test:\n  script:\n    - npm test\nlint:\n  script:\n    - npm run lint'],
+      ['azure-pipelines.yml', 'steps:\n  - script: npm test\n  - bash: npm run lint'],
+      [
+        '.circleci/config.yml',
+        'jobs:\n  test:\n    steps:\n      - run:\n          command: npm test\n      - run: npm run lint',
+      ],
+      [
+        'bitbucket-pipelines.yml',
+        'pipelines:\n  default:\n    - step:\n        script:\n          - npm test\n          - npm run lint',
+      ],
+    ] as const;
+
+    for (const [file, content] of cases) {
+      const ctx = fakeContext({ [file]: content });
+      expect((await check('CI-02')).run(ctx).passed, file).toBe(true);
+      expect((await check('CI-03')).run(ctx).passed, file).toBe(true);
+    }
+  });
+
+  test('CI-02 recognizes an Azure DotNetCoreCLI test task', async () => {
+    const ctx = fakeContext({
+      'azure-pipelines.yml': 'steps:\n  - task: DotNetCoreCLI@2\n    inputs:\n      command: test',
+    });
+    expect((await check('CI-02')).run(ctx).passed).toBe(true);
+  });
+
+  test('CI-03 ignores the CircleCI run step name when its command does not lint', async () => {
+    const ctx = fakeContext({
+      '.circleci/config.yml':
+        'jobs:\n  check:\n    steps:\n      - run:\n          name: Lint\n          command: echo preparing',
+    });
+    expect((await check('CI-03')).run(ctx).passed).toBe(false);
+  });
+
+  test('CI-02 and CI-03 still inspect nested workflow files', async () => {
+    const ctx = fakeContext({
+      'backend/.github/workflows/ci.yml':
+        'name: Build\njobs:\n  check:\n    steps:\n      - name: Run tests\n        run: npm test\n      - name: Static checks\n        run: npm run lint',
+    });
     expect((await check('CI-02')).run(ctx).passed).toBe(true);
     expect((await check('CI-03')).run(ctx).passed).toBe(true);
   });
@@ -644,6 +705,14 @@ describe('ci checks', () => {
       'cloudbuild/test/test.yml':
         'steps:\n  - args: ["run", "lint"]\n    entrypoint: npm\n  - args: ["run", "type-check"]\n    entrypoint: npm',
     });
+    expect((await check('CI-03')).run(ctx).passed).toBe(true);
+  });
+
+  test('CI-02 and CI-03 recognize Cloud Build script fields', async () => {
+    const ctx = fakeContext({
+      'cloudbuild/test/test.yml': 'steps:\n  - name: node:20\n    script: npm test && npm run lint',
+    });
+    expect((await check('CI-02')).run(ctx).passed).toBe(true);
     expect((await check('CI-03')).run(ctx).passed).toBe(true);
   });
 

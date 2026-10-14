@@ -20,14 +20,86 @@ function ciFiles(ctx: ScanContext): string[] {
   return [...new Set([WORKFLOW_RE, ...OTHER_CI_RES].flatMap((re) => ctx.matching(re)))];
 }
 
-function ciContent(ctx: ScanContext): string {
+const CI_COMMAND_KEYS = {
+  workflow: ['run'],
+  gitlab: ['script', 'before_script', 'after_script'],
+  azure: ['script', 'bash', 'pwsh', 'powershell', 'command', 'customCommand'],
+  bitbucket: ['script', 'after-script'],
+  cloudbuild: ['args', 'entrypoint', 'script'],
+} as const;
+
+function extractYamlCommands(content: string, keys: readonly string[], emptyValueIsBlock = true): string {
+  const commandKey = new RegExp(`^\\s*(?:-\\s*)?(?:${keys.join('|')})\\s*:\\s*(.*)$`, 'i');
+  const commands: string[] = [];
+  let blockIndent: number | null = null;
+
+  for (const line of content.split(/\r?\n/)) {
+    const indent = line.match(/^\s*/)?.[0].length ?? 0;
+    if (blockIndent !== null) {
+      if (line.trim() === '') {
+        commands.push('');
+        continue;
+      }
+      if (line.trim() !== '' && indent > blockIndent) {
+        commands.push(line.slice(blockIndent + 1));
+        continue;
+      }
+      blockIndent = null;
+    }
+
+    const match = commandKey.exec(line);
+    if (!match) continue;
+
+    const value = match[1]!.trim();
+    if (value === '' || /^[|>][+-]?$/.test(value)) {
+      if (value !== '' || emptyValueIsBlock) blockIndent = indent;
+    } else {
+      commands.push(value);
+    }
+  }
+
+  return commands.join('\n');
+}
+
+function extractJenkinsCommands(content: string): string {
+  const commands: string[] = [];
+  const shellStep =
+    /\b(?:sh|bat|powershell|pwsh)\s*(?:\(\s*(?:[^)]*?\bscript\s*:\s*)?)?(?:'''([\s\S]*?)'''|"""([\s\S]*?)"""|'([^']*)'|"([^"]*)")/g;
+  for (const match of content.matchAll(shellStep)) {
+    commands.push(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '');
+  }
+  return commands.join('\n');
+}
+
+function extractCircleCiCommands(content: string): string {
+  return [extractYamlCommands(content, ['command']), extractYamlCommands(content, ['run'], false)].join('\n');
+}
+
+function ciCommandContent(ctx: ScanContext): string {
   return ciFiles(ctx)
-    .map((f) => ctx.read(f) ?? '')
+    .map((file) => {
+      const content = ctx.read(file) ?? '';
+      if (/(^|\/)Jenkinsfile$/.test(file)) return extractJenkinsCommands(content);
+
+      const keys = file.startsWith('cloudbuild/')
+        ? CI_COMMAND_KEYS.cloudbuild
+        : file.endsWith('.gitlab-ci.yml')
+          ? CI_COMMAND_KEYS.gitlab
+          : file.endsWith('azure-pipelines.yml')
+            ? CI_COMMAND_KEYS.azure
+            : file.endsWith('.circleci/config.yml')
+              ? null
+              : file.endsWith('bitbucket-pipelines.yml')
+                ? CI_COMMAND_KEYS.bitbucket
+                : CI_COMMAND_KEYS.workflow;
+
+      return keys === null ? extractCircleCiCommands(content) : extractYamlCommands(content, keys);
+    })
     .join('\n');
 }
 
 function ciInspectableContent(ctx: ScanContext): string {
-  return expandCiWithComposerScripts(ciContent(ctx), ctx);
+  return expandCiWithComposerScripts(ciCommandContent(ctx), ctx);
 }
 
 const TEST_CMD_RE =
