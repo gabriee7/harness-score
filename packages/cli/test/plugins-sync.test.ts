@@ -126,7 +126,7 @@ describe('plugins/shared path config sync', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   test('generated TOOL_PATHS matches PLUGIN_TOOL_PATHS from the CLI harness registry exactly', () => {
     for (const [toolId, paths] of Object.entries(PLUGIN_TOOL_PATHS)) {

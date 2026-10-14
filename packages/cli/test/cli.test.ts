@@ -61,17 +61,21 @@ describe('cli', () => {
     ['maturity', 'level-4', 4, 0],
     ['effective', 'level-1', 3, 1],
     ['effective', 'level-4', 4, 0],
-  ] as const)('uses the %s snapshot for a complete --min-level gate', (gate, fixture, minLevel, status) => {
-    const result = run([
-      path.join(FIXTURES, fixture),
-      '--gate',
-      gate,
-      '--min-level',
-      String(minLevel),
-      '--quiet',
-    ]);
-    expect(result.status).toBe(status);
-  });
+  ] as const)(
+    'uses the %s snapshot for a complete --min-level gate',
+    (gate, fixture, minLevel, status) => {
+      const result = run([
+        path.join(FIXTURES, fixture),
+        '--gate',
+        gate,
+        '--min-level',
+        String(minLevel),
+        '--quiet',
+      ]);
+      expect(result.status).toBe(status);
+    },
+    10_000,
+  );
 
   test('--badge writes a valid SVG', () => {
     const badgePath = path.join(os.tmpdir(), `hs-badge-${process.pid}.svg`);

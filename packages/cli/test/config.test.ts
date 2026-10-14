@@ -14,6 +14,25 @@ import {
 } from '../src/config.js';
 
 describe('parseConfigObject', () => {
+  test.each([
+    [null, /must be a JSON object/],
+    [[], /must be a JSON object/],
+    [{ gate: 'invalid' }, /gate must be/],
+    [{ scopes: null }, /scopes must be an object/],
+    [{ scopes: { user: 'yes' } }, /scopes.user must be a boolean/],
+    [{ scopes: { system: 1 } }, /scopes.system must be a boolean/],
+    [{ extraRoots: {} }, /extraRoots must be an array/],
+    [{ extraRoots: [null] }, /extraRoots\[0\]: must be an object/],
+    [{ extraRoots: [{ id: 'team', path: 'x', extra: true }] }, /unknown key/],
+    [{ extraRoots: [{ id: '  ', path: 'x' }] }, /id must be a non-empty string/],
+    [{ extraRoots: [{ id: 'team', path: '  ' }] }, /path must be a non-empty string/],
+    [{ extends: 'no-hooks' }, /extends must be an array/],
+    [{ extends: [null] }, /extends\[0\]: must be a non-empty string/],
+    [{ rules: [] }, /rules must be an object/],
+  ] as const)('rejects malformed config input %#', (input, expected) => {
+    expect(() => parseConfigObject(input, 'test')).toThrow(expected);
+  });
+
   test('accepts defaults when keys are omitted', () => {
     expect(parseConfigObject({}, 'test')).toEqual(DEFAULT_CONFIG);
   });
@@ -97,6 +116,11 @@ describe('PRESET_REGISTRY never waives a protected check', () => {
 });
 
 describe('resolveSeverities', () => {
+  test('ignores unknown inherited presets defensively', () => {
+    const resolved = resolveSeverities({ extends: ['removed-preset' as 'no-hooks'], rules: {} });
+    expect(resolved.get('HKS-01')).toEqual({ severity: 'error', source: 'default' });
+  });
+
   test('defaults every check to error/default', () => {
     const resolved = resolveSeverities({ extends: [], rules: {} });
     expect(resolved.get('HKS-01')).toEqual({ severity: 'error', source: 'default' });
@@ -119,6 +143,15 @@ describe('resolveSeverities', () => {
 });
 
 describe('resolveScanConfig precedence', () => {
+  test('includes the system scope when selected by the caller', () => {
+    const resolved = resolveScanConfig(process.cwd(), {
+      scopeFlags: ['system'],
+      gate: null,
+    });
+    expect(resolved.scopes.system).toBe(true);
+    expect(resolved.effectiveScopes).toContain('system');
+  });
+
   test('CLI scope flags override config file', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-cfg-'));
     const configPath = path.join(dir, '.harness-score.json');
