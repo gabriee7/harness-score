@@ -16,3 +16,9 @@ alwaysApply: true
   in users' CI logs). Never renumber, reuse, or delete an ID — deprecate by
   making the check always-pass if truly needed.
 - This repository must keep scoring L4 on `npm run scan`.
+- **External PRs:** push fixes to the contributor PR head branch, not local
+  `main` ahead of `origin/main`.
+- **English on GitHub:** PR/issue comments and review bodies on
+  `paladini/harness-score` are English only (changesets/release notes too,
+  unless the user explicitly asks for another language). Do not post
+  maintainer review feedback in Portuguese or other locales on public threads.

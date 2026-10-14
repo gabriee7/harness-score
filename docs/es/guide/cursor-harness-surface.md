@@ -182,6 +182,11 @@ repos** — incluido el
 artefactos que este capítulo describió (instalable desde el directorio del repo
 hoy; listado Marketplace pendiente de revisión).
 
+Al escanear un **repositorio plugin** (manifest en la raíz del scan), `harness-score`
+mapea `skills/`, `commands/`, `agents/` y `hooks/hooks.json` default a los mismos
+checks que el layout `.cursor/...` — ver
+[capítulo 8 — layouts de plugin](./measure-and-improve#skl-01).
+
 ## Elegir el mecanismo correcto
 
 | Quieres… | Usa |

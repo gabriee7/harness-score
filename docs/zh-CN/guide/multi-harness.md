@@ -1,6 +1,6 @@
 # 多 harness 支持
 
-自 **v0.4.0** 起，Harness Score 可测量**任意工具**上 AI 编码 harness 的成熟度 — 不限于 Cursor。无论你使用 Cursor、Claude Code、Windsurf、Cline、Continue、Codex，还是其他 AI 优先 IDE 或编辑器，同一套 108 分评分模型均适用。
+自 **v0.4.0** 起，Harness Score 可测量**任意工具**上 AI 编码 harness 的成熟度 — 不限于 Cursor。无论你使用 Cursor、Claude Code、Devin、Windsurf、Cline、Continue、Codex，还是其他 AI 优先 IDE 或编辑器，同一套 108 分评分模型均适用。
 
 ## 为何多 harness 支持重要
 
@@ -12,11 +12,11 @@ Harness Score 把这一点说清楚了：测量一次，任意工具受益。你
 
 扫描器对工具特定工件使用 **OR 语义**。每项 check 问的是「*任意*已识别工具是否提供此项？」— 而非「Cursor 是否提供？」。例如：
 
-- `.cursor/rules/*.mdc` **或** `.windsurf/rules/*.md` **或** `.clinerules/*.md` **或** 嵌套 `CLAUDE.md` → 计入 **rules**
-- `.cursor/hooks.json` **或** 带 `hooks` 节的 `.claude/settings.json` → 计入 **hooks**
-- `.cursor/skills/<name>/SKILL.md` **或** `.claude/skills/<name>/SKILL.md` → 计入 **skills**
+- `.cursor/rules/*.mdc` **或** `.windsurf/rules/*.md` **或** `.clinerules/*.md` **或** `.claude/rules/**/*.md` **或** 代码子目录中嵌套的 `AGENTS.md` / `CLAUDE.md` → 计入 **rules**
+- `.cursor/hooks.json` **或** 带 `hooks` 节的 `.claude/settings.json` **或** `.devin/hooks.v1.json` **或** 带 `hooks` 节的 `.devin/config.json` → 计入 **hooks**
+- `.cursor/skills/<name>/SKILL.md` **或** `.claude/skills/<name>/SKILL.md` **或** `.devin/skills/<name>/SKILL.md` → 计入 **skills**
 - `.cursor/agents/*.md` **或** `.claude/agents/*.md` **或** `.opencode/agents/*.md` → 计入 **subagents**
-- 根目录 `AGENTS.md` **或** `CLAUDE.md` **或** `GEMINI.md` → 计入 **context guides**
+- 根目录 `AGENTS.md` **或** `CLAUDE.md` **或** `GEMINI.md` **或** `.claude/CLAUDE.md` **或** `.claude/AGENTS.md` → 计入 **context guides**
 
 无需全部配置 — 有一个即可。自 v0.5.0 起，添加第二个工具永远不会*降低*分数：存在多个 hooks 配置时，注册事件最多者胜出。
 
@@ -27,7 +27,8 @@ Harness Score 识别以下工件（精确模式见扫描器 harness registry —
 | 工具 | Rules | Skills | Commands / workflows | Subagents | Hooks | MCP |
 |---|---|---|---|---|---|---|
 | **Cursor** | `.cursor/rules/*.mdc` | `.cursor/skills/*/SKILL.md` | `.cursor/commands/*.md` | `.cursor/agents/*.md` | `.cursor/hooks.json` | `.cursor/mcp.json` |
-| **Claude Code** | 嵌套 `CLAUDE.md` | `.claude/skills/*/SKILL.md` | `.claude/commands/*.md` | `.claude/agents/*.md` | `.claude/settings.json`（`hooks` 键） | `.mcp.json` |
+| **Claude Code** | `.claude/rules/**/*.md`、代码目录中嵌套 `AGENTS.md` / `CLAUDE.md` | `.claude/skills/*/SKILL.md` | `.claude/commands/*.md` | `.claude/agents/*.md` | `.claude/settings.json`（`hooks` 键） | `.mcp.json` |
+| **Devin** | — | `.devin/skills/*/SKILL.md` | — | — | `.devin/hooks.v1.json`（独立 event 映射）或 `.devin/config.json`（`hooks` 键） | — |
 | **Windsurf** | `.windsurf/rules/*.md` | — | `.windsurf/workflows/*.md` | — | — | — |
 | **Cline** | `.clinerules/*.md` | — | — | — | — | — |
 | **Continue** | `.continue/rules/*.md` | — | `.continue/prompts/*` | — | — | — |
@@ -37,11 +38,26 @@ Harness Score 识别以下工件（精确模式见扫描器 harness registry —
 | **OpenCode** | — | — | — | `.opencode/agents/*.md` | — | — |
 | **Zed** | — | — | `.zed/commands/*.md` | — | — | — |
 
+### Devbox 环境兼容性
+
+Harness Score 支持使用 [Devbox](https://www.jetify.com/docs/devbox) 作为开发环境的仓库。
+这表示文件系统兼容，而不是 AI harness 检测：Devbox 不会出现在 `detectedHarnesses` 中，
+其配置也不会获得成熟度分数。
+
+Devbox 会在项目中创建本地 `.devbox/` 目录，用于隔离环境。该目录可能包含
+`.devbox/virtenv/` 等生成状态，以及纯 shell 中使用的 `.devbox/bin/devbox` 符号链接。
+Harness Score 会跳过整个 `.devbox/` 目录（包括符号链接），因此生成的环境文件不会把扫描
+标记为不完整。有关 upstream 路径，请参阅 [Devbox FAQ](https://www.jetify.com/docs/devbox/faq)
+和 [Devbox 实现](https://github.com/jetify-com/devbox/blob/main/internal/devbox/pure_shell.go)。
+
+请将项目配置保存在项目根目录的 `devbox.json`、`devbox.lock` 和 `devbox.d/` 中。
+这些路径仍会被扫描。`.devbox/` 下的文件不会被计为 harness 工件，这是有意为之。
+
 根上下文文件（`AGENTS.md`、`CLAUDE.md`、`GEMINI.md`）对所有工具均计数。
 而最重要的工件**本就与工具无关**：测试、CI 流水线、linter、类型检查器、`.gitignore`、锁文件与 `SECURITY.md`，无论使用哪种工具，得分方式相同。
 
 ::: tip 某工具列较稀疏并非扣分
-Windsurf 没有扫描器可识别的 hooks 系统 — 但 hooks 只是六个维度之一。仅有 Windsurf、rules/传感器/CI 配置扎实的仓库，仍可升至 L3。L4 需要门禁 hooks，目前意味着 `.cursor/hooks.json` 或 Claude Code 的 `settings.json` 需与主工具并存。
+Windsurf 没有扫描器可识别的 hooks 系统 — 但 hooks 只是六个维度之一。仅有 Windsurf、rules/传感器/CI 配置扎实的仓库，仍可升至 L3。L4 需要门禁 hooks，目前意味着 `.cursor/hooks.json`、Claude Code 的 `settings.json`，或 Devin 的 `.devin/hooks.v1.json` / `.devin/config.json` 需与主工具并存。
 :::
 
 ## 一次构建 harness
@@ -76,7 +92,7 @@ Windsurf 没有扫描器可识别的 hooks 系统 — 但 hooks 只是六个维�
 | 工具 | user scope 路径（示例） | 说明 |
 |---|---|---|
 | **Cursor** | `~/.cursor/{skills,commands,agents,rules}`、`~/.cursor/mcp.json` | 仅 UI 中的 User Rules 仍不可见 |
-| **Claude Code** | `~/.claude/{skills,commands,agents}`、`~/.claude/settings.json`、`~/.mcp.json` | |
+| **Claude Code** | `~/.claude/{skills,commands,agents}`、`~/.claude/settings.json`、`~/.mcp.json`、来自 `~/.claude/plugins/installed_plugins.json` 的 user-scoped plugins | User plugins count toward effective score only |
 | **Windsurf** | `~/.codeium/windsurf/memories/global_rules.md` → `.windsurf/rules/…`、`~/.windsurf/{rules,workflows}/`、MCP 别名 | 全局 rules 在 Codeium 下 |
 | **Cline** | `~/Documents/Cline/Rules/*.md` → `.clinerules/…` | 回退：`~/Cline/Rules` |
 | **Continue** | `~/.continue/{rules,prompts}/` | `config.yaml` 内联 rules 未解析（v1） |
@@ -190,7 +206,7 @@ Harness Score 在「Hooks & Guardrails」维度对任一配置均给分 — 门�
 
 - 插件支持分阶段推进：**Cursor**（旗舰，完整审计与修复），**Claude Code**（Phase 0，只读审计），其他待定（见 [PLUGINS-ROADMAP.md](https://github.com/paladini/harness-score/blob/main/PLUGINS-ROADMAP.md)）。
 - CLI 具备工具感知能力且完全支持多 harness：终端与 Markdown 报告会显示 `Detected:` 行，列出每个已识别工具；`--json` 输出以 `detectedHarnesses` 数组包含相同列表。插件将逐步跟上。
-- hooks 目前仅识别 Cursor 与 Claude Code — 其他工具的 hook 系统（随生态出现）需加入 registry。
+- hooks 目前识别 Cursor、Claude Code 与 Devin — 其他工具的 hook 系统（随生态出现）需加入 registry。Devin 在 CLI 中**仅检测**（尚无插件）；扫描器只读取仓库中的 `.devin/` 路径 — 不读取 gitignore 的 `.devin/config.local.json` 或用户主目录中的 Devin 设置。
 
 **计划（1.0 之后）：**
 

@@ -45,4 +45,16 @@ describe('renderBadge', () => {
     legacy.truncated = true;
     expect(renderBadge(legacy)).toContain('>incomplete<');
   });
+
+  test('remains maturity-only when effective is incomplete', () => {
+    const report = makeReport(4);
+    report.verdicts = {
+      maturity: { status: 'complete', reasons: [] },
+      effective: { status: 'incomplete', reasons: [{ code: 'depth-limit' }] },
+    };
+
+    const svg = renderBadge(report);
+    expect(svg).toContain('>L4<');
+    expect(svg).not.toContain('>incomplete<');
+  });
 });

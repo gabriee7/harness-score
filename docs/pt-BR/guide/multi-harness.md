@@ -1,6 +1,6 @@
 # Suporte multi-harness
 
-A partir da **v0.4.0**, o Harness Score mede a maturidade do harness de código com IA em **qualquer ferramenta** — não só Cursor. Seja Cursor, Claude Code, Windsurf, Cline, Continue, Codex ou outro IDE/editor AI-first, o mesmo modelo de 108 pontos se aplica.
+A partir da **v0.4.0**, o Harness Score mede a maturidade do harness de código com IA em **qualquer ferramenta** — não só Cursor. Seja Cursor, Claude Code, Devin, Windsurf, Cline, Continue, Codex ou outro IDE/editor AI-first, o mesmo modelo de 108 pontos se aplica.
 
 ## Por que multi-harness importa
 
@@ -12,11 +12,11 @@ O Harness Score torna isso explícito: você mede uma vez, qualquer ferramenta s
 
 O scanner usa **semântica OR** para artefatos específicos de ferramenta. Cada check pergunta "alguma ferramenta reconhecida fornece isso?" — não "o Cursor fornece?". Por exemplo:
 
-- `.cursor/rules/*.mdc` **ou** `.windsurf/rules/*.md` **ou** `.clinerules/*.md` **ou** um `CLAUDE.md` aninhado → conta para **rules**
-- `.cursor/hooks.json` **ou** `.claude/settings.json` com seção `hooks` → conta para **hooks**
-- `.cursor/skills/<name>/SKILL.md` **ou** `.claude/skills/<name>/SKILL.md` → conta para **skills**
+- `.cursor/rules/*.mdc` **ou** `.windsurf/rules/*.md` **ou** `.clinerules/*.md` **ou** `.claude/rules/**/*.md` **ou** `AGENTS.md` / `CLAUDE.md` aninhados em subdiretório de código → conta para **rules**
+- `.cursor/hooks.json` **ou** `.claude/settings.json` com seção `hooks` **ou** `.devin/hooks.v1.json` **ou** `.devin/config.json` com seção `hooks` → conta para **hooks**
+- `.cursor/skills/<name>/SKILL.md` **ou** `.claude/skills/<name>/SKILL.md` **ou** `.devin/skills/<name>/SKILL.md` → conta para **skills**
 - `.cursor/agents/*.md` **ou** `.claude/agents/*.md` **ou** `.opencode/agents/*.md` → conta para **subagents**
-- `AGENTS.md` na raiz **ou** `CLAUDE.md` **ou** `GEMINI.md` → conta para **guias de contexto**
+- `AGENTS.md` na raiz **ou** `CLAUDE.md` **ou** `GEMINI.md` **ou** `.claude/CLAUDE.md` **ou** `.claude/AGENTS.md` → conta para **guias de contexto**
 
 Você não precisa configurar todos — um basta. Desde v0.5.0, adicionar segunda ferramenta nunca *abaixa* sua pontuação: quando várias configs de hooks existem, vence a com mais eventos registrados.
 
@@ -28,7 +28,8 @@ O Harness Score reconhece estes artefatos (padrões exatos no registry do scanne
 | Ferramenta | Rules | Skills | Commands / workflows | Subagents | Hooks | MCP |
 |---|---|---|---|---|---|---|
 | **Cursor** | `.cursor/rules/*.mdc` | `.cursor/skills/*/SKILL.md` | `.cursor/commands/*.md` | `.cursor/agents/*.md` | `.cursor/hooks.json` | `.cursor/mcp.json` |
-| **Claude Code** | `CLAUDE.md` aninhados | `.claude/skills/*/SKILL.md` | `.claude/commands/*.md` | `.claude/agents/*.md` | `.claude/settings.json` (`hooks`) | `.mcp.json` |
+| **Claude Code** | `.claude/rules/**/*.md`, `AGENTS.md` / `CLAUDE.md` aninhados em dirs de código | `.claude/skills/*/SKILL.md` | `.claude/commands/*.md` | `.claude/agents/*.md` | `.claude/settings.json` (`hooks`) | `.mcp.json` |
+| **Devin** | — | `.devin/skills/*/SKILL.md` | — | — | `.devin/hooks.v1.json` (mapa standalone) ou `.devin/config.json` (`hooks`) | — |
 | **Windsurf** | `.windsurf/rules/*.md` | — | `.windsurf/workflows/*.md` | — | — | — |
 | **Cline** | `.clinerules/*.md` | — | — | — | — | — |
 | **Continue** | `.continue/rules/*.md` | — | `.continue/prompts/*` | — | — | — |
@@ -38,11 +39,31 @@ O Harness Score reconhece estes artefatos (padrões exatos no registry do scanne
 | **OpenCode** | — | — | — | `.opencode/agents/*.md` | — | — |
 | **Zed** | — | — | `.zed/commands/*.md` | — | — | — |
 
+### Compatibilidade com o ambiente Devbox
+
+O Harness Score é compatível com repositórios que usam o
+[Devbox](https://www.jetify.com/docs/devbox) como ambiente de desenvolvimento.
+Isso é compatibilidade de filesystem, não detecção de harness de IA: o Devbox não
+aparece em `detectedHarnesses`, e sua configuração não gera pontos de maturidade.
+
+O Devbox cria um diretório `.devbox/` local ao projeto para o ambiente isolado.
+Esse diretório pode conter estado gerado, como `.devbox/virtenv/`, e o symlink
+`.devbox/bin/devbox` usado dentro de um shell puro. O Harness Score ignora todo o
+diretório `.devbox/`, incluindo symlinks, para que arquivos do ambiente gerado não
+deixem o scan incompleto. Consulte o
+[FAQ do Devbox](https://www.jetify.com/docs/devbox/faq) e a
+[implementação do Devbox](https://github.com/jetify-com/devbox/blob/main/internal/devbox/pure_shell.go)
+para os paths upstream.
+
+Mantenha a configuração do projeto em `devbox.json`, `devbox.lock` e `devbox.d/`
+na raiz do projeto. Esses paths continuam visíveis para o scan. Arquivos colocados
+em `.devbox/` não são intencionalmente pontuados como artefatos de harness.
+
 Arquivos de contexto na raiz (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) contam para toda ferramenta.
 E os artefatos mais importantes são **agnósticos de ferramenta**: testes, CI, linters, type checkers, `.gitignore`, lockfiles e `SECURITY.md` pontuam igual independente da ferramenta.
 
 ::: tip Coluna esparça de uma ferramenta não é penalidade
-Windsurf não tem sistema de hooks reconhecido pelo scanner — mas hooks são só uma dimensão de seis. Repositório só Windsurf com rules, sensores e CI fortes ainda sobe a L3. L4 exige gate hooks, o que hoje significa `.cursor/hooks.json` ou `settings.json` do Claude Code junto da ferramenta principal.
+Windsurf não tem sistema de hooks reconhecido pelo scanner — mas hooks são só uma dimensão de seis. Repositório só Windsurf com rules, sensores e CI fortes ainda sobe a L3. L4 exige gate hooks, o que hoje significa `.cursor/hooks.json`, `settings.json` do Claude Code ou `.devin/hooks.v1.json` / `.devin/config.json` junto da ferramenta principal.
 :::
 
 ## Construindo o harness uma vez
@@ -78,7 +99,7 @@ repo-relative do registry, para checks se comportarem como arquivos do repo.
 | Ferramenta | Caminhos user-scope (exemplos) | Notas |
 |---|---|---|
 | **Cursor** | `~/.cursor/{skills,commands,agents,rules}`, `~/.cursor/mcp.json` | User Rules só na UI continuam invisíveis |
-| **Claude Code** | `~/.claude/{skills,commands,agents}`, `~/.claude/settings.json`, `~/.mcp.json` | |
+| **Claude Code** | `~/.claude/{skills,commands,agents}`, `~/.claude/settings.json`, `~/.mcp.json`, user-scoped plugins from `~/.claude/plugins/installed_plugins.json` | User plugins count toward effective score only |
 | **Windsurf** | `~/.codeium/windsurf/memories/global_rules.md` → `.windsurf/rules/…`, `~/.windsurf/{rules,workflows}/`, alias MCP | Regras globais ficam no Codeium |
 | **Cline** | `~/Documents/Cline/Rules/*.md` → `.clinerules/…` | Fallback: `~/Cline/Rules` |
 | **Continue** | `~/.continue/{rules,prompts}/` | Regras inline em `config.yaml` não parseadas (v1) |
@@ -203,7 +224,7 @@ Se trocar ferramenta principal (ex.: Cursor → Claude Code), o harness transfer
 
 - Suporte a plugins é escalonado: **Cursor** (principal, audit-and-fix completo), **Claude Code** (Fase 0, audit read-only), outros TBD (veja [PLUGINS-ROADMAP.md](https://github.com/paladini/harness-score/blob/main/PLUGINS-ROADMAP.md)).
 - A CLI é tool-aware e totalmente multi-harness: relatórios terminal e markdown mostram linha `Detected:` com toda ferramenta reconhecida, e `--json` inclui `detectedHarnesses`. Plugins alcançam com o tempo.
-- Hooks reconhecidos só para Cursor e Claude Code — sistemas de hooks de outras ferramentas (conforme surgirem) precisam de entradas no registry.
+- Hooks reconhecidos para Cursor, Claude Code e Devin — sistemas de hooks de outras ferramentas (conforme surgirem) precisam de entradas no registry. Devin é **somente detecção** no CLI (sem plugin ainda); o scanner lê apenas caminhos `.devin/` no repositório — não `.devin/config.local.json` (gitignored) nem configurações Devin no home do usuário.
 
 **Planejado (pós-1.0):**
 

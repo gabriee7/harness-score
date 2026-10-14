@@ -118,7 +118,7 @@ Para un repo de producto típico, el piso se ve así:
 
 - [ ] `.gitignore` cubriendo env files; sin secretos reales en el árbol
 - [ ] `mcp.json` limpio de credenciales literales
-- [ ] `hooks.json` con un gate de shell (patrones destructivos → deny/ask)
+- [ ] Config de hooks reconocida (`.cursor/hooks.json`, `settings.json` de Claude Code, `.devin/hooks.v1.json` o `.devin/config.json` con clave `hooks`) con un gate (patrones destructivos → deny/ask)
 - [ ] Un hook de feedback (format/lint on edit)
 - [ ] Branch protection con checks de CI obligatorios
 

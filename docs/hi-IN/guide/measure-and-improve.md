@@ -421,7 +421,8 @@ README hero, blog posts, या social previews के लिए बैनर (`
 ### Context & Guides (20 pts)
 
 #### CTX-01 · Agent context file present — 4 pts {#ctx-01}
-रिपॉज़िटरी रूट पर `AGENTS.md` (या `CLAUDE.md` / `GEMINI.md`) मौजूद है।
+Project guide मौजूद है: root `AGENTS.md`, `CLAUDE.md`, या `GEMINI.md`, या Claude Code
+`.claude/CLAUDE.md` / `.claude/AGENTS.md` पर session-start instructions (scoped rules नहीं)।
 **सुधार:** `AGENTS.md` बनाएँ जो इनका उत्तर दे: यह प्रोजेक्ट क्या है, build और test कैसे करें, कौन-सी conventions लागू हैं, क्या कभी न छुएँ। recipe
 [अध्याय 3](./guides-feedforward#writing-an-agents-md-that-works) में।
 
@@ -433,22 +434,22 @@ README hero, blog posts, या social previews के लिए बैनर (`
 #### CTX-03 · Scoped rules in use — 4 pts {#ctx-03}
 किसी भी supported tool के लिए कम से कम एक scoped rule फ़ाइल (जैसे `.cursor/rules/*.mdc`,
 `.windsurf/rules/*.md`, `.clinerules/*.md`, `.continue/rules/*.md`,
-`.github/instructions/*.instructions.md`, `.agents/rules/*`)। subdirectories में nested context
-फ़ाइलें (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` root के नीचे कहीं भी) भी गिनती हैं — Claude
+`.github/instructions/*.instructions.md`, `.agents/rules/*`, `.claude/rules/**/*.md`)। code subdirectories में nested context
+फ़ाइलें (root के नीचे, `.claude/CLAUDE.md` या `.claude/AGENTS.md` को छोड़कर `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) भी गिनती हैं — Claude
 Code और Codex जैसे टूल में ये directory-scoped rules हैं।
 **सुधार:** एक छोटी always-on rule से शुरू करें जिसमें अपरिहार्य नियम हों,
 फिर प्रति area path-scoped rules (या प्रति subtree nested context फ़ाइलें) जोड़ें।
 
 #### CTX-04 · Rules have valid frontmatter — 3 pts {#ctx-04}
 हर rule activation metadata declare करती है (`description`, `globs`/`trigger`/`paths`/`applyTo`, या `alwaysApply`)।
-टूल जो metadata के बिना auto-load करते हैं — `.continue/rules/*` और nested
+टूल जो metadata के बिना auto-load करते हैं — `.continue/rules/*`, `.claude/rules/*` (optional `paths` only), और nested
 context फ़ाइलें — construction से pass होती हैं।
 **सुधार:** frontmatter block जोड़ें; इसके बिना एजेंट decide नहीं कर सकता कि rule
 कब लागू हो।
 
 #### CTX-05 · Rules are scoped — 2 pts {#ctx-05}
 हर rule blanket always-on नहीं है। nested context फ़ाइलें scoped गिनती हैं —
-वे केवल अपने subtree पर लागू होती हैं।
+वे केवल अपने subtree पर लागू होती हैं। Claude Code `.claude/rules/*.md` बिना `paths` frontmatter always-on है; केवल एक rule पर `paths` छोड़ें, या `paths:` से scope करें।
 **सुधार:** rules को paths (`globs:`, `trigger:` glob, `paths:`, `applyTo:`) तक सीमित करें
 ताकि relevant होने पर ही load हों — हर always-on rule हर request के context पर tax लगाती है।
 
@@ -467,7 +468,7 @@ deprecated single-file फ़ॉर्मेट absent है (या modern sco
 ### Skills & Commands (17 pts)
 
 #### SKL-01 · At least one skill — 4 pts {#skl-01}
-`.cursor/skills/<name>/`, `.claude/skills/<name>/`, या `.agents/skills/<name>/` के अंतर्गत `SKILL.md`।
+`.cursor/skills/<name>/`, `.claude/skills/<name>/`, `.agents/skills/<name>/` के अंतर्गत `SKILL.md`; या जब scan root Claude Code / Cursor plugin repository हो — default plugin `skills/<name>/` के अंतर्गत (scan root पर `.claude-plugin/plugin.json` या `.cursor-plugin/plugin.json`)।
 **सुधार:** अपनी सबसे बार-बार दोहराई procedure (deploy, release, migration)
 को skill के रूप में package करें — [अध्याय 3](./guides-feedforward#skills-the-procedural-layer)।
 
@@ -478,7 +479,7 @@ deprecated single-file फ़ॉर्मेट absent है (या modern sco
 
 #### SKL-03 · Explicit workflows/commands defined — 3 pts {#skl-03}
 Command या workflow फ़ाइलें (`.cursor/commands/`, `.windsurf/workflows/`,
-`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`)।
+`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`, या scan root पर plugin `commands/`)।
 **सुधार:** workflows जिन्हें आप जानबूझकर trigger करते हैं (`/review`, `/release`)
 को command/workflow फ़ाइलों के रूप में encode करें।
 
@@ -488,7 +489,7 @@ Descriptions ≥40 characters।
 to deploy or release; covers tagging, pipeline, rollback, smoke tests.»
 
 #### AGT-01 · Custom subagent defined — 3 pts {#agt-01}
-`.cursor/agents/`, `.claude/agents/`, या `.opencode/agents/` के अंतर्गत subagent फ़ाइल।
+`.cursor/agents/`, `.claude/agents/`, `.opencode/agents/`, या scan root पर plugin `agents/` के अंतर्गत subagent फ़ाइल।
 **सुधार:** primary agent को delegate करने वाले काम (planning, review, release) के लिए purpose-built subagent package करें — देखें
 [Subagents](./cursor-harness-surface#subagents-purpose-built-delegates)
 अध्याय 2 में।
@@ -503,13 +504,16 @@ to deploy or release; covers tagging, pipeline, rollback, smoke tests.»
 Harness artifacts repository root से canonical path द्वारा और tool directory के स्वयं scan root
 होने पर भी पहचाने जाते हैं। उदाहरण के लिए, `.claude` को scan करने पर physical paths
 `settings.json`, `hooks/`, `skills/`, और `agents/` को उनके `.claude/...` equivalents के रूप में
-पहचाना जाता है। किसी अन्य नाम वाली generic root पर यह नियम लागू नहीं होता। Evidence हमेशा पढ़े गए
+पहचाना जाता है; `.devin` scan करने पर `hooks.v1.json`, `config.json` (`hooks` key), `hooks/`, और
+`skills/` भी पहचाने जाते हैं। Plugin repository root scan करने पर (scan root पर `.claude-plugin/plugin.json`
+या `.cursor-plugin/plugin.json`) default `skills/`, `commands/`, `agents/`, और `hooks/hooks.json` को tool-canonical
+equivalents के रूप में पहचाना जाता है; tree में कहीं और nested plugin manifest इस aliasing को enable नहीं करते। किसी अन्य नाम वाली generic root पर यह नियम लागू नहीं होता। Evidence हमेशा पढ़े गए
 physical path का उपयोग करता है।
 
 #### HKS-01 · Hooks configuration present and valid JSON — 4 pts {#hks-01}
-`.cursor/hooks.json` या `.claude/settings.json` (`hooks` key) मौजूद है, JSON के रूप में parse होता
-है, और hooks object रखता है। कई configs होने पर valid non-empty config जीतता है; native-root depth,
-event count, और lexical path deterministic tie-breakers हैं।
+`.cursor/hooks.json`, `.claude/settings.json` (`hooks` key), scan root पर plugin `hooks/hooks.json`, `.devin/hooks.v1.json` (standalone
+event map), या `.devin/config.json` (`hooks` key) मौजूद है और JSON के रूप में parse होता है। कई configs होने पर valid non-empty config जीतता है; native-root depth,
+event count, और lexical path deterministic tie-breakers हैं। Gitignored `.devin/config.local.json` scan नहीं होता।
 **सुधार:** hooks config बनाएँ और
 [अध्याय 5](./guardrails-and-safety#gate-hooks) की recipes से बढ़ाएँ।
 
@@ -522,48 +526,54 @@ events शामिल हैं: `SessionStart`, `Setup`, `InstructionsLoaded`,
 `PostToolUseFailure`, `PostToolBatch`, `PermissionDenied`, `Notification`, `SubagentStart`,
 `SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`,
 `ConfigChange`, `CwdChanged`, `DirectoryAdded`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`,
-`PreCompact`, `PostCompact`, `SessionEnd`, `Elicitation`, और `ElicitationResult`।
+`PreCompact`, `PostCompact`, `SessionEnd`, `Elicitation`, और `ElicitationResult`। Devin का
+standalone map `PreToolUse`, `PostToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`,
+`PostCompaction`, `SessionStart`, और `SessionEnd` दस्तावेज़ करता है (`version` field आवश्यक नहीं)।
 **Forward compatibility:** कोई unknown लेकिन structurally valid event points बनाए रखता है और
 `unknown-hook-event` warning देता है। Empty या malformed events अभी भी fail होते हैं।
 
 #### HKS-03 · Gate hook guards risky operations — 4 pts {#hks-03}
 gate hook registered (Cursor: `beforeShellExecution`, `beforeMCPExecution`,
-`preToolUse`, या `beforeReadFile`; Claude Code: `PreToolUse`)।
+`preToolUse`, या `beforeReadFile`; Claude Code या Devin: `PreToolUse` या `PermissionRequest`)।
 **सुधार:** अध्याय 5 का destructive-command deny gate जोड़ें — prose rules
 अनुरोध हैं; gates तथ्य हैं।
 
 #### HKS-04 · Feedback hook observes output — 2 pts {#hks-04}
 feedback hook registered (Cursor: `afterFileEdit`, `postToolUse`, …;
-Claude Code: `PostToolUse`)।
+Claude Code: `PostToolUse`; Devin: `PostToolUse` या `Stop`)।
 **सुधार:** edit पर format-and-lint एजेंट को session के अंदर instant feedback देता है।
 
 #### HKS-05 · Hook scripts committed — 2 pts {#hks-05}
 Command executable, shell command, या `args` entry में मिलने वाला हर repository-local path committed
-file पर resolve होता है। `.claude` के scan root होने पर
-`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` जैसा project-prefixed canonical path physical
-`hooks/check.js` पर भी resolve होता है। Valid non-command handlers के लिए कोई applicable local
+file पर resolve होता है। `${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` और
+`${DEVIN_PROJECT_DIR}/.devin/hooks/check.py` जैसे project-prefixed canonical paths native scan roots
+के तहत physical hook paths पर भी resolve होते हैं। Devin commands जो
+`os.path.join(os.environ['DEVIN_PROJECT_DIR'], …)` form उपयोग करते हैं, Python execute किए बिना resolve होते हैं। Valid non-command handlers के लिए कोई applicable local
 script नहीं होता, इसलिए वे pass होते हैं।
 **सुधार:** हर referenced local script commit करें; एक missing path भी HKS-05 को fail करता है।
 
 ### Sensors & Feedback (20 pts)
 
 #### SNS-01 · Test runner configured — 6 pts {#sns-01}
-वास्तविक test script/config (vitest, jest, pytest, go test, cargo test…)।
+वास्तविक test script/config (vitest, jest, pytest, go test, cargo test,
+`node:test` load होने पर `node --test`, phpunit.xml, pest.php, …) या Composer में declared test package
+(`phpunit/phpunit`, `pestphp/pest`, …)।
 **सुधार:** runner wire करें एक obvious entry point के साथ और AGENTS.md में document करें —
 tests वह तरीका हैं जिससे एजेंट अपना काम verify करता है।
 
 #### SNS-02 · Linter configured — 5 pts {#sns-02}
-eslint/biome, ruff, golangci-lint, rubocop, या equivalent।
+eslint/biome, ruff, golangci-lint, rubocop, phpcs/rector, या equivalent।
 **सुधार:** हर convention जो lint rule के रूप में express हो सकती है, prose की ज़रूरत नहीं रहती।
 
 #### SNS-03 · Type checking in place — 4 pts {#sns-03}
-tsconfig (आदर्श रूप से `strict: true`), mypy/pyright, या statically typed
+tsconfig (आदर्श रूप से `strict: true`), mypy/pyright/ty, phpstan/psalm, या statically typed
 language।
 **सुधार:** type checker वह एकमात्र sensor है जो हर agent edit की
 मुफ़्त review करता है — [अध्याय 4](./sensors-feedback#type-checking-the-free-sensor)।
 
 #### SNS-04 · Formatter configured — 3 pts {#sns-04}
-prettier/biome, black/ruff-format, gofmt/rustfmt।
+prettier/biome, black/ruff-format, gofmt/rustfmt, pint, या php-cs-fixer
+(जब config file न हो तो `composer.json` में `laravel/pint` भी गिनता है)।
 **सुधार:** diffs में formatting noise review में real mistakes छिपा देता है।
 
 #### SNS-05 · Test files exist — 2 pts {#sns-05}
@@ -573,7 +583,11 @@ tree में कम से कम एक वास्तविक test फ़�
 ### CI Feedback (14 pts)
 
 #### CI-01 · CI pipeline configured — 4 pts {#ci-01}
-GitHub Actions workflow (या GitLab/CircleCI/Jenkins equivalent)।
+GitHub Actions workflow (या GitLab/CircleCI/Jenkins equivalent), जिसमें
+`cloudbuild/` के अंतर्गत Google Cloud Build configuration भी शामिल है।
+Detection filesystem पर आधारित है और scan root के नीचे किसी भी depth पर लागू
+होती है; इसलिए nested workspace projects की CI files भी count होती हैं। यह
+verify नहीं करती कि provider वास्तव में उस file को execute करता है।
 **सुधार:** `.github/workflows/ci.yml` जोड़ें जो हर push पर sensors चलाए।
 
 #### CI-02 · CI runs the tests — 4 pts {#ci-02}
@@ -611,6 +625,12 @@ MCP config (`.cursor/mcp.json`, `.mcp.json`,
 हर clone को publish किया secret है।
 
 #### HYG-05 · License present — 2 pts {#hyg-05}
+Root पर `LICENSE`, `LICENSE.md`, `LICENSE.txt`, या `COPYING` फ़ाइल।
+**लागू नहीं** जब वह फ़ाइल न हो और root `composer.json` या `package.json` का
+`license` `proprietary` या `UNLICENSED` हो (closed-source declaration)। Check
+score के numerator और denominator दोनों से बाहर हो जाता है। `"private": true`
+और Cargo `publish = false` यह नहीं करते। `MIT` जैसे SPDX id के साथ फ़ाइल का
+न होना अब भी fail है।
 **सुधार:** LICENSE जोड़ें; open-source use और plugin marketplaces के लिए आवश्यक।
 
 #### HYG-06 · No secrets in harness files — 2 pts {#hyg-06}
@@ -624,10 +644,12 @@ package-lock.json, uv.lock, Cargo.lock, go.sum, या equivalent।
 tree test करते हैं।
 
 #### HYG-08 · MCP config uses env interpolation for credentials — 3 pts {#hyg-08}
-MCP config फ़ाइल valid है, और credential-shaped field (token, key,
-secret, password…) literal के बजाय `${ENV_VAR}` interpolation उपयोग करता है।
-HYG-04 का positive complement — MCP setup न होने वाले repo को यहाँ अंक नहीं,
-जैसे कोई अन्य bonus check।
+जब MCP config मौजूद हो (`.cursor/mcp.json`, `.mcp.json`, `.agents/mcp_config.json`),
+वह valid JSON हो, और कोई भी credential-shaped field (token, key, secret, password…)
+literal के बजाय `${ENV_VAR}` interpolation उपयोग करे। यह HYG-04 का positive complement है।
+**लागू नहीं** जब repository में MCP config न हो। MCP न उपयोग करना missing interpolation
+नहीं है, इसलिए check numerator और denominator दोनों से बाहर हो जाता है। बाद में config
+जोड़ने पर check फिर लागू होता है।
 **सुधार:** secrets को `"${VAR_NAME}"` के रूप में reference करें और `.env.example` में required
 variables document करें।
 

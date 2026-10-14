@@ -34,7 +34,7 @@ Options:
   --version            Print version
   --help               Show this help
 
-Exit codes: 0 complete/pass, 1 complete scan below --min-level, 2 invalid usage or incomplete requested scan.
+Exit codes: 0 complete/pass, 1 complete scan below --min-level, 2 invalid usage or incomplete gated scan.
 
 Configuration file (optional): .harness-score.json in the scan root.
 See the guide: https://paladini.github.io/harness-score/guide/measure-and-improve
@@ -174,12 +174,20 @@ function gatedLevel(report: Report): Report['level'] {
 
 function requestedVerdictScopes(report: Report): Array<'maturity' | 'effective'> {
   const scopes: Array<'maturity' | 'effective'> = ['maturity'];
-  if (report.scopes.effective.some((scope) => scope !== 'repo')) scopes.push('effective');
+  if (report.gate === 'effective' || report.scopes.effective.some((scope) => scope !== 'repo')) {
+    scopes.push('effective');
+  }
   return scopes;
 }
 
 function incompleteRequestedScopes(report: Report): Array<'maturity' | 'effective'> {
   return requestedVerdictScopes(report).filter((scope) => !reportScopeIsComplete(report, scope));
+}
+
+function gateExitCode(report: Report, minLevel: number | null): 0 | 1 | 2 {
+  if (!reportScopeIsComplete(report, report.gate)) return 2;
+  if (minLevel !== null && gatedLevel(report).index < minLevel) return 1;
+  return 0;
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -249,25 +257,24 @@ if (args.badge !== null) {
 }
 
 const incompleteScopes = incompleteRequestedScopes(report);
-if (incompleteScopes.length > 0) {
-  for (const scope of incompleteScopes) {
-    const reasons = reportVerdict(report, scope).reasons.map(formatIncompleteReason).join('; ');
-    process.stderr.write(
-      `harness-score: ${scope} scan is incomplete; no authoritative verdict is available` +
-        `${reasons ? `: ${reasons}` : '.'}\n`,
-    );
-  }
+for (const scope of incompleteScopes) {
+  const reasons = reportVerdict(report, scope).reasons.map(formatIncompleteReason).join('; ');
+  process.stderr.write(
+    `harness-score: ${scope} scan is incomplete; no authoritative ${scope} verdict is available` +
+      `${reasons ? `: ${reasons}` : '.'}\n`,
+  );
+}
+
+const exitCode = gateExitCode(report, args.minLevel);
+if (exitCode === 2) {
   process.exit(2);
 }
 
-if (args.minLevel !== null) {
+if (exitCode === 1 && args.minLevel !== null) {
   const level = gatedLevel(report);
-  if (level.index < args.minLevel) {
-    const gateLabel = report.gate === 'effective' ? 'effective' : 'maturity';
-    process.stderr.write(
-      `harness-score: ${gateLabel} L${level.index} is below required L${args.minLevel} — ` +
-        `missing: ${level.nextLevelGaps.join('; ') || 'see failed checks'}\n`,
-    );
-    process.exit(1);
-  }
+  process.stderr.write(
+    `harness-score: ${report.gate} L${level.index} is below required L${args.minLevel} — ` +
+      `missing: ${level.nextLevelGaps.join('; ') || 'see failed checks'}\n`,
+  );
+  process.exit(1);
 }

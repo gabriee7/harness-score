@@ -22,8 +22,8 @@ input से set करें (`maturity` default)।
 
 | Scope | अर्थ | क्या scan होता है |
 |---|---|---|
-| `repo` | हमेशा on | वह directory जो आप `harness-score` को pass करते हैं (default `.`) |
-| `user` | Opt-in | Allowlisted paths repo-relative shapes में map: `~/.cursor/*`, `~/.claude/*`, `~/.codeium/windsurf/*` (Windsurf alias), `~/Documents/Cline/Rules` → `.clinerules/`, `~/.continue/{rules,prompts}`, `~/.agents/*`, `~/.zed/commands`, `~/.config/opencode/agents`, आदि। [multi-harness — user scope by tool](./multi-harness#user-scope-by-tool) देखें। **शामिल नहीं:** Copilot global (repo-only), Continue inline rules in `config.yaml`, IDE-only Cursor User Rules। |
+| `repo` | हमेशा on | वह directory जो आप `harness-score` को pass करते हैं (default `.`)। जब scan root Claude Code / Cursor **plugin repository** हो (`.claude-plugin/plugin.json` या `.cursor-plugin/plugin.json` root पर), default plugin `skills/`, `commands/`, `agents/`, `hooks/hooks.json` `.claude/...` / `.cursor/...` की तरह गिने जाते हैं। |
+| `user` | Opt-in | Allowlisted paths repo-relative shapes में map: `~/.cursor/*`, `~/.claude/*`, `~/.claude/plugins/installed_plugins.json` से user-scoped Claude Code plugins, `~/.codeium/windsurf/*` (Windsurf alias), `~/Documents/Cline/Rules` → `.clinerules/`, `~/.continue/{rules,prompts}`, `~/.agents/*`, `~/.zed/commands`, `~/.config/opencode/agents`, आदि। [multi-harness — user scope by tool](./multi-harness#user-scope-by-tool) देखें। **शामिल नहीं:** Copilot global (repo-only), Continue inline rules in `config.yaml`, IDE-only Cursor User Rules, Cursor user plugin cache (v1)। |
 | `system` | Opt-in | Validated system-wide installs के लिए reserved (v1 में minimal) |
 | `extraRoots` | Opt-in | Additional directories (relative या absolute) जिनकी tree harness layout mirror करती है — जैसे shared team harness checkout |
 
@@ -52,12 +52,12 @@ Official level names **maturity** पर लागू, जब तक `gate: effe
 |---|---|---|---|
 | `context` | Context & Guides | 20 | AGENTS.md, scoped rules, README |
 | `skills` | Skills & Commands | 17 | Skills, commands/workflows, subagents |
-| `hooks` | Hooks & Guardrails | 14 | hooks.json / Claude settings hooks |
+| `hooks` | Hooks & Guardrails | 14 | Cursor, Claude Code, और Devin hook configurations |
 | `sensors` | Sensors & Feedback | 20 | Tests, linter, types, formatter |
 | `ci` | CI Feedback | 14 | Pipeline, pre-commit |
 | `hygiene` | Hygiene & Safety | 23 | .gitignore, secrets, lockfile, license, MCP hygiene |
 
-**Total:** 108 points।
+**Total:** 108 points जब हर check लागू हो। किसी check के लागू न होने (`checks[].applicable` `false`) या `"off"` होने पर उस scan का `score.max` कम होता है।
 
 ## check कैटलॉग
 
@@ -67,9 +67,9 @@ Stable IDs — remediation से linked [मापन और सुधार](.
 
 | ID | Pts | Analyzes exactly | Remediation |
 |---|---|---|---|
-| CTX-01 | 4 | Root `AGENTS.md`, `CLAUDE.md`, या `GEMINI.md` exists | [ctx-01](./measure-and-improve#ctx-01) |
+| CTX-01 | 4 | Root `AGENTS.md`, `CLAUDE.md`, या `GEMINI.md`, या `.claude/CLAUDE.md` / `.claude/AGENTS.md` | [ctx-01](./measure-and-improve#ctx-01) |
 | CTX-02 | 3 | Context file में ≥20 meaningful lines और ≥2 headings | [ctx-02](./measure-and-improve#ctx-02) |
-| CTX-03 | 4 | कम से कम एक scoped rule file (कोई supported tool) या nested context file | [ctx-03](./measure-and-improve#ctx-03) |
+| CTX-03 | 4 | कम से कम एक scoped rule (कोई supported tool), `.claude/rules/**/*.md`, या code subdirectory में nested context | [ctx-03](./measure-and-improve#ctx-03) |
 | CTX-04 | 3 | हर rule frontmatter में activation metadata declare करती है | [ctx-04](./measure-and-improve#ctx-04) |
 | CTX-05 | 2 | हर rule blanket always-on नहीं | [ctx-05](./measure-and-improve#ctx-05) |
 | CTX-06 | 2 | कोई single rule file 500 lines से अधिक नहीं | [ctx-06](./measure-and-improve#ctx-06) |
@@ -91,7 +91,7 @@ Stable IDs — remediation से linked [मापन और सुधार](.
 
 | ID | Pts | Analyzes exactly | Remediation |
 |---|---|---|---|
-| HKS-01 | 4 | Hooks config exists और JSON के रूप में parse होता है | [hks-01](./measure-and-improve#hks-01) |
+| HKS-01 | 4 | Cursor, Claude Code, या Devin hooks config exists और JSON के रूप में parse होता है | [hks-01](./measure-and-improve#hks-01) |
 | HKS-02 | 2 | Events और typed handlers structurally valid हैं; unknown valid event warning देता है | [hks-02](./measure-and-improve#hks-02) |
 | HKS-03 | 4 | Gate-class hook registered (shell/MCP/read/tool gate) | [hks-03](./measure-and-improve#hks-03) |
 | HKS-04 | 2 | Feedback-class hook registered (post-edit/tool) | [hks-04](./measure-and-improve#hks-04) |
@@ -101,10 +101,10 @@ Stable IDs — remediation से linked [मापन और सुधार](.
 
 | ID | Pts | Analyzes exactly | Remediation |
 |---|---|---|---|
-| SNS-01 | 6 | Test runner configured (`package.json` script, pytest, go test, etc.) | [sns-01](./measure-and-improve#sns-01) |
-| SNS-02 | 5 | Linter configured (eslint, biome, ruff, golangci-lint, …) | [sns-02](./measure-and-improve#sns-02) |
-| SNS-03 | 4 | Type checking configured (tsconfig, mypy, pyright, …) | [sns-03](./measure-and-improve#sns-03) |
-| SNS-04 | 3 | Formatter configured (prettier, black, gofmt, …) | [sns-04](./measure-and-improve#sns-04) |
+| SNS-01 | 6 | Test runner configured (`package.json` script, pytest, phpunit.xml, pest, go test, node --test, …) | [sns-01](./measure-and-improve#sns-01) |
+| SNS-02 | 5 | Linter configured (eslint, biome, ruff, phpcs, rector, golangci-lint, …) | [sns-02](./measure-and-improve#sns-02) |
+| SNS-03 | 4 | Type checking configured (tsconfig, mypy, pyright, ty, phpstan, psalm, …) | [sns-03](./measure-and-improve#sns-03) |
+| SNS-04 | 3 | Formatter configured (prettier, black, pint, php-cs-fixer, gofmt, …) | [sns-04](./measure-and-improve#sns-04) |
 | SNS-05 | 2 | Tree में कम से कम एक test file exists | [sns-05](./measure-and-improve#sns-05) |
 
 ### CI Feedback
@@ -112,22 +112,22 @@ Stable IDs — remediation से linked [मापन और सुधार](.
 | ID | Pts | Analyzes exactly | Remediation |
 |---|---|---|---|
 | CI-01 | 4 | CI pipeline file present (GitHub Actions, GitLab CI, …) | [ci-01](./measure-and-improve#ci-01) |
-| CI-02 | 4 | CI test suite चलाता है | [ci-02](./measure-and-improve#ci-02) |
-| CI-03 | 4 | CI lint या typecheck चलाता है | [ci-03](./measure-and-improve#ci-03) |
-| CI-04 | 2 | Pre-commit या git hook tooling installed | [ci-04](./measure-and-improve#ci-04) |
+| CI-02 | 4 | CI test commands चलाता है (phpunit, pest, …; referenced Composer scripts resolve; step labels ignored) | [ci-02](./measure-and-improve#ci-02) |
+| CI-03 | 3 | CI lint या typecheck commands चलाता है (phpstan, pint, phpcs, …; referenced Composer scripts resolve; step labels ignored) | [ci-03](./measure-and-improve#ci-03) |
+| CI-04 | 3 | Pre-commit या git hook tooling installed | [ci-04](./measure-and-improve#ci-04) |
 
 ### Hygiene & Safety
 
 | ID | Pts | Analyzes exactly | Remediation |
 |---|---|---|---|
-| HYG-01 | 4 | `.gitignore` present | [hyg-01](./measure-and-improve#hyg-01) |
+| HYG-01 | 2 | `.gitignore` present | [hyg-01](./measure-and-improve#hyg-01) |
 | HYG-02 | 3 | `.gitignore` environment files cover करता है | [hyg-02](./measure-and-improve#hyg-02) |
 | HYG-03 | 4 | Unprotected `.env` files नहीं (`.env.example` pattern के बिना) | [hyg-03](./measure-and-improve#hyg-03) |
 | HYG-04 | 4 | MCP JSON configs में inline credential patterns नहीं | [hyg-04](./measure-and-improve#hyg-04) |
 | HYG-05 | 2 | `LICENSE` file present | [hyg-05](./measure-and-improve#hyg-05) |
-| HYG-06 | 3 | Harness markdown/JSON में credential-like signatures नहीं | [hyg-06](./measure-and-improve#hyg-06) |
+| HYG-06 | 2 | Harness markdown/JSON में credential-like signatures नहीं | [hyg-06](./measure-and-improve#hyg-06) |
 | HYG-07 | 3 | Dependency lockfile committed | [hyg-07](./measure-and-improve#hyg-07) |
-| HYG-08 | 4 | MCP configs secrets के लिए env interpolation use करते हैं | [hyg-08](./measure-and-improve#hyg-08) |
+| HYG-08 | 3 | MCP configs secrets के लिए env interpolation use करते हैं | [hyg-08](./measure-and-improve#hyg-08) |
 
 ## कॉन्फ़िगरेशन फ़ाइल (`.harness-score.json`) {#configuration-file-harness-scorejson}
 
@@ -182,12 +182,22 @@ Precedence: **CLI flags → Action inputs → config file → defaults**। `ext
 
 ## CLI flags (स्कैन कॉन्फ़िगरेशन)
 
+Repository maturity discovery पर production depth cap नहीं है। Known dependency
+और generated directories को छोड़ने के बाद इसमें tracked, untracked, और ignored
+files शामिल होते हैं। Repository scan में `file-count-limit` emergency
+1,000,000-file fuse को दर्शाता है; bounded user और extra-root overlays अभी भी
+`depth-limit` report कर सकते हैं। Check के request करने पर inspect न हो पाने वाला
+discovered path `unreadable-path` report करता है; जानबूझकर skip किए गए 512 KiB से
+बड़े bodies यह reason report नहीं करते। Internal symlinks follow और deduplicate
+होते हैं; scan root के बाहर का target `outside-root-symlink` report करता है और
+उसे traverse या read नहीं किया जाता।
+
 | Flag | Meaning |
 |---|---|
 | `--config <file>` | Specific path से config load करें |
 | `--scope user` | User scope enable (comma-separated: `user`, `system`) |
 | `--gate maturity\|effective` | `--min-level` के लिए score |
-| `--min-level <0-4>` | Complete gated score level से नीचे हो तो exit 1; कोई requested scope incomplete हो तो हमेशा exit 2 |
+| `--min-level <0-4>` | Complete gated score level से नीचे हो तो exit 1; gate द्वारा चुना गया snapshot incomplete हो तो exit 2 |
 | `--json` | Full report including `scopes`, `gate`, `effective`, और `verdicts` |
 
 ## GitHub Action इनपुट
@@ -201,7 +211,7 @@ Precedence: **CLI flags → Action inputs → config file → defaults**। `ext
 | `min-level` | `0` | Gated score level से नीचे हो तो fail |
 
 Outputs: `level`, `level-name`, `percent` (maturity); `effective-level`, `effective-percent`.
-अगर कोई requested scope incomplete है, तो Action इन outputs, badge, Markdown report, job summary, या PR comment को publish करने से पहले fail होती है।
+Action maturity complete होने पर ही maturity outputs, badge, और report publish करती है, और effective complete होने पर ही effective outputs publish करती है। अगर केवल effective incomplete है, तो `gate: maturity` warning के साथ pass हो सकता है; `gate: effective` exit 2 देता है। Maturity incomplete होने पर maturity outputs, badge, report, या PR comment publish नहीं होते।
 
 ## Report JSON फ़ील्ड (स्थिर)
 
@@ -216,14 +226,15 @@ Outputs: `level`, `level-name`, `percent` (maturity); `effective-level`, `effect
 | `effective` | Same shape: `{ level, score, dimensions, checks, detectedHarnesses }` |
 | `detectedHarnesses` | **Repo** में देखे गए tools (informational) |
 | `verdicts.maturity`, `verdicts.effective` | हर snapshot का completeness status और deterministic reasons: `complete` या `incomplete` |
-| `verdicts.*.reasons[]` | `file-count-limit`, `depth-limit`, या `unreadable-directory`, optional `path` और `limit` के साथ |
-| `truncated` | Compatibility alias; किसी भी requested snapshot के किसी कारण से incomplete होने पर `true` |
+| `verdicts.*.reasons[]` | `file-count-limit`, `depth-limit`, `unreadable-directory`, `unreadable-path`, या `outside-root-symlink`, optional `path` और `limit` के साथ |
+| `truncated` | Compatibility alias; maturity या effective snapshot के किसी कारण से incomplete होने पर `true` |
 | `preset` | `{ extends, rules, resolved }` — इस scan में actually apply हुई team customization; `resolved` सिर्फ वे checks list करता है जिनकी severity default से अलग है |
 | `level.capped`, `level.capReason` | जब अगले level की कोई blocking requirement वर्तमान config में कभी पूरी नहीं हो सकती (जैसे उसकी dimension preset से excluded), तो `capped` `true` होता है; `capReason` वजह बताता है |
-| `dimensions[].applicable` | `false` सिर्फ तब जब उस dimension का हर check `"off"` resolve हुआ हो |
+| `dimensions[].applicable` | `false` जब उस dimension का कोई check score में न आए: हर check `"off"` हो और/या `checks[].applicable` `false` हो |
+| `checks[].applicable` | `false` जब check इस repository पर लागू न हो (closed-source `license` वाला HYG-05, MCP config के बिना HYG-08)। Numerator और denominator दोनों से बाहर। Default `true`। पुराने reports में field न होना लागू होने का अर्थ है |
 | `checks[].severity` | `"off"` \| `"warn"` \| `"error"` — इस scan ने उस check के लिए जो resolved severity use की |
 | `checks[].warnings` | Optional non-fatal diagnostics `{ code, message, source? }`; terminal और Markdown इन्हें points बदले बिना दिखाते हैं |
 
-`level`, `score`, dimensions, और checks diagnosis के लिए मौजूद रहते हैं, लेकिन संबंधित verdict `incomplete` होने पर provisional हैं। Terminal और Markdown maturity को unavailable दिखाते हैं, और badge value `incomplete` होती है, कभी L0-L4 नहीं। `verdicts` के बिना पुराने reports में `truncated: false` complete और `truncated: true` incomplete माना जाता है।
+`level`, `score`, dimensions, और checks diagnosis के लिए मौजूद रहते हैं, लेकिन संबंधित verdict `incomplete` होने पर provisional हैं। Terminal और Markdown unavailable snapshot को पहचानते हैं। Badge हमेशा maturity को दिखाता है और maturity incomplete होने पर `incomplete` value इस्तेमाल करता है, कभी L0-L4 नहीं। `verdicts` के बिना पुराने reports में `truncated: false` complete और `truncated: true` incomplete माना जाता है।
 
-`--diff` default में **maturity** fields compare करता है (top-level `level` / `score` / `checks`) और incomplete baseline या current result को reject करता है।
+`--diff` default में **maturity** fields compare करता है (top-level `level` / `score` / `checks`) और incomplete maturity baseline या current result को reject करता है। Incomplete effective snapshot maturity diff को block नहीं करता। Check का applicable और not applicable के बीच बदलना अपना delta है (`became-applicable` / `became-not-applicable`), newly passing या newly failing से अलग।

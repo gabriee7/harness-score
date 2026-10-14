@@ -447,7 +447,9 @@ estáveis; a CLI liga cada falha à entrada aqui.
 ### Context & Guides (20 pt)
 
 #### CTX-01 · Agent context file present — 4 pts {#ctx-01}
-An `AGENTS.md` (or `CLAUDE.md` / `GEMINI.md`) exists at the repository root.
+A project guide exists: root `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`, or Claude
+Code instructions at `.claude/CLAUDE.md` or `.claude/AGENTS.md` (session-start
+memory — not scoped rules).
 **Correção:** create `AGENTS.md` answering: what is this project, how do I build
 and test it, what conventions hold, what must I never touch. Recipe in
 [capítulo 3](./guides-feedforward#writing-an-agents-md-that-works).
@@ -460,23 +462,25 @@ Commands over descriptions; point to rules instead of pasting them.
 #### CTX-03 · Scoped rules in use — 4 pts {#ctx-03}
 At least one scoped rule file for any supported tool (e.g. `.cursor/rules/*.mdc`,
 `.windsurf/rules/*.md`, `.clinerules/*.md`, `.continue/rules/*.md`,
-`.github/instructions/*.instructions.md`, `.agents/rules/*`). Nested context
-files in subdirectories (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md` anywhere below
-the root) also count — they are directory-scoped rules in tools like Claude
-Code and Codex.
+`.github/instructions/*.instructions.md`, `.agents/rules/*`, `.claude/rules/**/*.md`).
+Nested context files in code subdirectories (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`
+below the root, but not `.claude/CLAUDE.md` or `.claude/AGENTS.md`) also count —
+they are directory-scoped rules in tools like Claude Code and Codex.
 **Correção:** start with one short always-on rule holding your non-negotiables,
 then add path-scoped rules per area (or nested context files per subtree).
 
 #### CTX-04 · Rules have valid frontmatter — 3 pts {#ctx-04}
 Every rule declares activation metadata (`description`, `globs`/`trigger`/`paths`/`applyTo`, or `alwaysApply`).
-Rules a tool auto-loads without metadata — `.continue/rules/*` and nested
-context files — pass by construction.
+Rules a tool auto-loads without metadata — `.continue/rules/*`, `.claude/rules/*`
+(optional `paths` only), and nested context files — pass by construction.
 **Correção:** add the frontmatter block; without it the agent can't decide when the
 rule applies.
 
 #### CTX-05 · Rules are scoped — 2 pts {#ctx-05}
 Not every rule is blanket always-on. Nested context files count as scoped —
-they apply only to their subtree.
+they apply only to their subtree. Claude Code `.claude/rules/*.md` without
+`paths` frontmatter is always-on; omit `paths` on only one rule, or scope
+with `paths:`.
 **Correção:** scope rules to paths (`globs:`, `trigger:` glob, `paths:`, `applyTo:`)
 so they load only when relevant — every always-on rule taxes every request's context.
 
@@ -495,7 +499,7 @@ The deprecated single-file format is absent (or modern scoped rules also exist).
 ### Skills & Commands (17 pts)
 
 #### SKL-01 · At least one skill — 4 pts {#skl-01}
-A `SKILL.md` under `.cursor/skills/<name>/`, `.claude/skills/<name>/`, or `.agents/skills/<name>/`.
+A `SKILL.md` under `.cursor/skills/<name>/`, `.claude/skills/<name>/`, `.agents/skills/<name>/`, or — when the scan root is a Claude Code or Cursor plugin repository — under default plugin `skills/<name>/` (manifest at `.claude-plugin/plugin.json` or `.cursor-plugin/plugin.json` at the scan root).
 **Correção:** package your most repeated procedure (deploy, release, migration)
 as a skill — [capítulo 3](./guides-feedforward#skills-the-procedural-layer).
 
@@ -506,7 +510,7 @@ alone; without them the skill is invisible.
 
 #### SKL-03 · Explicit workflows/commands defined — 3 pts {#skl-03}
 Command or workflow files (`.cursor/commands/`, `.windsurf/workflows/`,
-`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`).
+`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`, or plugin `commands/` at the scan root).
 **Correção:** encode workflows you trigger deliberately (`/review`, `/release`)
 as command/workflow files.
 
@@ -516,7 +520,7 @@ Descriptions ≥40 characters.
 to deploy or release; covers tagging, pipeline, rollback, smoke tests."
 
 #### AGT-01 · Custom subagent defined — 3 pts {#agt-01}
-A subagent file under `.cursor/agents/`, `.claude/agents/`, or `.opencode/agents/`.
+A subagent file under `.cursor/agents/`, `.claude/agents/`, `.opencode/agents/`, or plugin `agents/` at the scan root.
 **Correção:** package a purpose-built subagent for a job the primary agent should
 delegate (planning, review, release) — see
 [Subagents](./cursor-harness-surface#subagents-purpose-built-delegates)
@@ -532,14 +536,20 @@ alone; without them the subagent is never invoked.
 Os artefatos do harness são reconhecidos tanto a partir da raiz do repositório, pelo caminho
 canônico, quanto quando o próprio diretório da ferramenta é a raiz do scan. Por exemplo, ao
 escanear `.claude`, os caminhos físicos `settings.json`, `hooks/`, `skills/` e `agents/` são
-reconhecidos como seus equivalentes `.claude/...`. Raízes genéricas com outro nome não recebem
-esse tratamento. A evidência sempre usa o caminho físico que foi lido.
+reconhecidos como seus equivalentes `.claude/...`; ao escanear `.devin`, `hooks.v1.json`,
+`config.json` (chave `hooks`), `hooks/` e `skills/` também são reconhecidos. Escanear a raiz de um
+repositório plugin (`.claude-plugin/plugin.json` ou `.cursor-plugin/plugin.json` na raiz do scan)
+reconhece `skills/`, `commands/`, `agents/` e `hooks/hooks.json` default como equivalentes canônicos
+da ferramenta. Manifestos plugin aninhados em outras pastas não ativam esse alias. Raízes genéricas
+com outro nome não recebem esse tratamento. A evidência sempre usa o caminho físico que foi lido.
 
 #### HKS-01 · Hooks configuration present and valid JSON — 4 pts {#hks-01}
-`.cursor/hooks.json` ou `.claude/settings.json` (chave `hooks`) existe, parseia como JSON e contém
-um objeto de hooks. Quando há várias configurações, uma configuração válida e não vazia vence;
-profundidade da raiz nativa, quantidade de eventos e caminho lexical são os desempates
-determinísticos.
+`.cursor/hooks.json`, `.claude/settings.json` (chave `hooks`), plugin `hooks/hooks.json` na raiz do
+scan, `.devin/hooks.v1.json` (mapa
+standalone de eventos) ou `.devin/config.json` (chave `hooks`) existe e parseia como JSON. Quando há
+várias configurações, uma configuração válida e não vazia vence; profundidade da raiz nativa,
+quantidade de eventos e caminho lexical são os desempates determinísticos. `.devin/config.local.json`
+(gitignored) não é escaneado.
 **Correção:** crie a configuração de hooks e evolua a partir das receitas do
 [capítulo 5](./guardrails-and-safety#gate-hooks).
 
@@ -553,49 +563,55 @@ obrigatórios. O catálogo inclui os 31 eventos documentados do Claude Code: `Se
 `PermissionDenied`, `Notification`, `SubagentStart`, `SubagentStop`, `TaskCreated`,
 `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`, `ConfigChange`, `CwdChanged`,
 `DirectoryAdded`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`, `PreCompact`, `PostCompact`,
-`SessionEnd`, `Elicitation` e `ElicitationResult`.
+`SessionEnd`, `Elicitation` e `ElicitationResult`. O mapa standalone do Devin documenta
+`PreToolUse`, `PostToolUse`, `PermissionRequest`, `UserPromptSubmit`, `Stop`, `PostCompaction`,
+`SessionStart` e `SessionEnd` (sem campo `version`).
 **Compatibilidade futura:** um evento desconhecido, mas estruturalmente válido, preserva os pontos
 e emite o warning `unknown-hook-event`. Eventos vazios ou malformados continuam reprovando.
 
 #### HKS-03 · Gate hook guards risky operations — 4 pts {#hks-03}
 A gate hook registered (Cursor: `beforeShellExecution`, `beforeMCPExecution`,
-`preToolUse`, or `beforeReadFile`; Claude Code: `PreToolUse`).
+`preToolUse`, or `beforeReadFile`; Claude Code ou Devin: `PreToolUse` ou `PermissionRequest`).
 **Correção:** gate de deny de comandos destrutivos do capítulo 5 — rules em prosa são
 pedidos; gates são fatos.
 
 #### HKS-04 · Feedback hook observes output — 2 pts {#hks-04}
 A feedback hook registered (Cursor: `afterFileEdit`, `postToolUse`, …;
-Claude Code: `PostToolUse`).
+Claude Code: `PostToolUse`; Devin: `PostToolUse` ou `Stop`).
 **Correção:** format-and-lint on edit gives the agent instant feedback inside the
 session.
 
 #### HKS-05 · Hook scripts committed — 2 pts {#hks-05}
 Todo caminho local do repositório encontrado no executável, no comando de shell ou em uma entrada
 de `args` resolve para um arquivo commitado. Caminhos canônicos prefixados pelo projeto, como
-`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js`, também resolvem para o caminho físico
-`hooks/check.js` quando `.claude` é a raiz do scan. Handlers válidos que não executam comandos
+`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` e `${DEVIN_PROJECT_DIR}/.devin/hooks/check.py`
+também resolvem para caminhos físicos de hooks sob raízes nativas de scan. Comandos Devin na forma
+`os.path.join(os.environ['DEVIN_PROJECT_DIR'], …)` são resolvidos sem executar Python. Handlers válidos que não executam comandos
 passam sem scripts locais aplicáveis.
 **Correção:** commite todo script local referenciado; um único caminho ausente reprova o HKS-05.
 
 ### Sensors & Feedback (20 pts)
 
 #### SNS-01 · Test runner configured — 6 pts {#sns-01}
-A real test script/config (vitest, jest, pytest, go test, cargo test…).
+A real test script/config (vitest, jest, pytest, go test, cargo test,
+`node --test` when a file loads `node:test`, phpunit.xml, pest.php, …) or a declared Composer test package
+(`phpunit/phpunit`, `pestphp/pest`, …).
 **Correção:** wire up the runner with one obvious entry point and document it in
 AGENTS.md — tests are how the agent verifies its own work.
 
 #### SNS-02 · Linter configured — 5 pts {#sns-02}
-eslint/biome, ruff, golangci-lint, rubocop, or equivalent.
+eslint/biome, ruff, golangci-lint, rubocop, phpcs/rector, or equivalent.
 **Correção:** every convention expressible as a lint rule stops needing prose.
 
 #### SNS-03 · Type checking in place — 4 pts {#sns-03}
-tsconfig (ideally `strict: true`), mypy/pyright, or a statically typed
-language.
+tsconfig (ideally `strict: true`), mypy/pyright/ty, phpstan/psalm, or a
+statically typed language.
 **Correção:** the type checker is the only sensor that reviews every agent edit
 for free — [capítulo 4](./sensors-feedback#type-checking-the-free-sensor).
 
 #### SNS-04 · Formatter configured — 3 pts {#sns-04}
-prettier/biome, black/ruff-format, gofmt/rustfmt.
+prettier/biome, black/ruff-format, gofmt/rustfmt, pint, or php-cs-fixer
+(including `laravel/pint` in `composer.json` when no config file exists).
 **Correção:** formatting noise in diffs hides real mistakes from review.
 
 #### SNS-05 · Test files exist — 2 pts {#sns-05}
@@ -605,7 +621,11 @@ At least one actual test file in the tree.
 ### CI Feedback (14 pts)
 
 #### CI-01 · CI pipeline configured — 4 pts {#ci-01}
-GitHub Actions workflow (or GitLab/CircleCI/Jenkins equivalent).
+Workflow do GitHub Actions (ou equivalente do GitLab/CircleCI/Jenkins), incluindo
+uma configuração do Google Cloud Build em `cloudbuild/`.
+A detecção se baseia no filesystem e funciona em qualquer profundidade abaixo
+da raiz do scan. Portanto, arquivos de CI em projetos aninhados de um workspace
+também contam. Ela não verifica se o provedor realmente executa o arquivo.
 **Correção:** add `.github/workflows/ci.yml` running your sensors on every push.
 
 #### CI-02 · CI runs the tests — 4 pts {#ci-02}
@@ -644,7 +664,13 @@ No credential signatures in MCP config (`.cursor/mcp.json`, `.mcp.json`,
 secret published to every clone.
 
 #### HYG-05 · License present — 2 pts {#hyg-05}
-**Correção:** add a LICENSE; required for open-source use and plugin marketplaces.
+Arquivo `LICENSE`, `LICENSE.md`, `LICENSE.txt` ou `COPYING` na raiz.
+**Não se aplica** quando esse arquivo está ausente e o `license` do
+`composer.json` ou `package.json` da raiz é `proprietary` ou `UNLICENSED`
+(declaração de código fechado). O check sai do numerador e do denominador.
+`"private": true` e `publish = false` no Cargo não fazem isso. Arquivo
+ausente ao lado de um SPDX como `MIT` continua falhando.
+**Correção:** adicione um LICENSE; exigido para uso open-source e marketplaces de plugins.
 
 #### HYG-06 · No secrets in harness files — 2 pts {#hyg-06}
 AGENTS.md, rules, and hooks config are clean of token signatures.
@@ -657,12 +683,15 @@ package-lock.json, uv.lock, Cargo.lock, go.sum, or equivalent.
 tree everywhere.
 
 #### HYG-08 · MCP config uses env interpolation for credentials — 3 pts {#hyg-08}
-An MCP config file is valid, and any credential-shaped field (token, key,
-secret, password…) uses `${ENV_VAR}` interpolation rather than a literal.
-The positive complement to HYG-04 — a repo with no MCP setup earns nothing
-here, same as any other bonus check.
-**Correção:** reference secrets as `"${VAR_NAME}"` and document required
-variables in `.env.example`.
+Quando existe config MCP (`.cursor/mcp.json`, `.mcp.json`,
+`.agents/mcp_config.json`), ela é JSON válido, e qualquer campo no formato
+de credencial (token, key, secret, password…) usa interpolação `${ENV_VAR}`
+em vez de literal. O complemento positivo de HYG-04.
+**Não se aplica** quando o repositório não tem config MCP. Não usar MCP não
+é uma interpolação faltando, então o check sai do numerador e do denominador.
+Adicionar uma config depois torna o check aplicável de novo.
+**Correção:** referencie segredos como `"${VAR_NAME}"` e documente as
+variáveis exigidas em `.env.example`.
 
 ## Plano de melhoria prático
 

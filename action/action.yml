@@ -9,7 +9,7 @@ branding:
 
 inputs:
   min-level:
-    description: 'Fail below this maturity level (0–4). Incomplete scans always fail, including at 0.'
+    description: 'Fail below this level (0–4). An incomplete gated snapshot exits 2, including at 0.'
     required: false
     default: '0'
   badge:
@@ -27,7 +27,7 @@ inputs:
   version:
     description: 'harness-score npm version or package spec to run.'
     required: false
-    default: '1.5.3'
+    default: '1.8.2'
   comment:
     description: >-
       Post (or update) a sticky pull-request comment showing the harness
@@ -63,10 +63,10 @@ outputs:
     description: 'Maturity score percentage.'
     value: ${{ steps.scan.outputs.percent }}
   effective-level:
-    description: 'Effective level index when global scopes are enabled.'
+    description: 'Effective level index when the effective snapshot is complete.'
     value: ${{ steps.scan.outputs.effective-level }}
   effective-percent:
-    description: 'Effective score percentage when global scopes are enabled.'
+    description: 'Effective score percentage when the effective snapshot is complete.'
     value: ${{ steps.scan.outputs.effective-percent }}
 
 runs:
@@ -95,32 +95,74 @@ runs:
         npx -y "harness-score@$HS_VERSION" . "${ARGS[@]}" > harness-report.json
         SCAN_STATUS=$?
         set -e
-        if [ "$SCAN_STATUS" -ne 0 ] && [ "$SCAN_STATUS" -ne 2 ]; then
-          exit "$SCAN_STATUS"
-        fi
 
-        node <<'NODE'
+        if ! SCAN_STATE=$(node <<'NODE'
         const fs = require('fs');
         const r = JSON.parse(fs.readFileSync('harness-report.json', 'utf8'));
+        if (!r.level || !r.score || !r.effective || !Array.isArray(r.dimensions)) {
+          throw new Error('harness-report.json is not a Harness Score report');
+        }
+
         const fallback = () => r.truncated
           ? { status: 'incomplete', reasons: [{ code: 'file-count-limit' }] }
           : { status: 'complete', reasons: [] };
-        const verdict = (scope) => r.verdicts?.[scope] ?? fallback();
-        const requested = ['maturity'];
-        if (r.scopes.effective.some((scope) => scope !== 'repo')) requested.push('effective');
-        const incomplete = requested.filter((scope) => verdict(scope).status === 'incomplete');
-        if (incomplete.length > 0) {
-          for (const scope of incomplete) {
-            const reasons = verdict(scope).reasons.map((reason) => {
-              const location = reason.path ? ` at ${reason.path}` : '';
-              const limit = reason.limit === undefined ? '' : ` (limit ${reason.limit})`;
-              return `${reason.code}${location}${limit}`;
-            }).join('; ');
-            console.error(`::error::Harness ${scope} scan is incomplete; no authoritative outputs were published: ${reasons}`);
-          }
-          process.exit(2);
+        const maturity = r.verdicts?.maturity ?? fallback();
+        const effective = r.verdicts?.effective ?? fallback();
+        const outputs = [];
+        const summary = [];
+
+        if (maturity.status === 'complete') {
+          outputs.push(`level=${r.level.index}`);
+          outputs.push(`level-name=${r.level.name}`);
+          outputs.push(`percent=${r.score.percent}`);
+          summary.push(`## Harness Score: L${r.level.index} - ${r.level.name} (${r.score.percent}% maturity)`);
+          summary.push('');
+          summary.push('| Dimension | Score | % |');
+          summary.push('|---|---|---|');
+          summary.push(...r.dimensions.map((d) => `| ${d.title} | ${d.earned}/${d.max} | ${d.percent}% |`));
+        } else {
+          console.error('::error::Harness maturity scan is incomplete; maturity outputs and artifacts were not published.');
+          summary.push('## Harness Score: maturity unavailable');
+          summary.push('');
+          summary.push('> Error: The maturity scan is incomplete. No maturity outputs or artifacts were published.');
         }
+
+        if (effective.status === 'complete') {
+          outputs.push(`effective-level=${r.effective.level.index}`);
+          outputs.push(`effective-percent=${r.effective.score.percent}`);
+          if (
+            maturity.status === 'complete' &&
+            (r.effective.level.index !== r.level.index || r.effective.score.percent !== r.score.percent)
+          ) {
+            summary.splice(1, 0, `Effective: L${r.effective.level.index} (${r.effective.score.percent}%) - gate: ${r.gate}`, '');
+          }
+        } else {
+          console.error('::warning::Harness effective scan is incomplete; effective outputs were not published.');
+          summary.push('');
+          summary.push('> Warning: Effective score unavailable because the effective scan is incomplete.');
+        }
+
+        if (outputs.length > 0) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs.join('\n')}\n`);
+        }
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`);
+        process.stdout.write([
+          maturity.status,
+          effective.status,
+          r.gate,
+          r.level.index,
+          r.effective.level.index,
+        ].join('\t'));
         NODE
+        ); then
+          echo "::error::Harness Score did not produce a valid JSON report."
+          if [ "$SCAN_STATUS" -ne 0 ]; then
+            exit "$SCAN_STATUS"
+          fi
+          exit 2
+        fi
+
+        IFS=$'\t' read -r MATURITY_STATUS EFFECTIVE_STATUS GATE LEVEL EFF_LEVEL <<< "$SCAN_STATE"
 
         ARTIFACT_ARGS=(--quiet)
         [ -n "$HS_BADGE" ] && ARTIFACT_ARGS+=(--badge "$HS_BADGE")
@@ -129,36 +171,40 @@ runs:
         [ "$HS_INCLUDE_USER_HARNESS" = "true" ] && ARTIFACT_ARGS+=(--scope user)
         [ "$HS_INCLUDE_SYSTEM_HARNESS" = "true" ] && ARTIFACT_ARGS+=(--scope system)
         [ -n "$HS_GATE" ] && ARTIFACT_ARGS+=(--gate "$HS_GATE")
-        if [ -n "$HS_BADGE" ] || [ -n "$HS_REPORT" ]; then
+        if [ "$MATURITY_STATUS" = "complete" ] && { [ -n "$HS_BADGE" ] || [ -n "$HS_REPORT" ]; }; then
+          set +e
           npx -y "harness-score@$HS_VERSION" . "${ARTIFACT_ARGS[@]}"
+          ARTIFACT_STATUS=$?
+          set -e
+          if [ "$ARTIFACT_STATUS" -ne 0 ] && ! { [ "$ARTIFACT_STATUS" -eq 2 ] && [ "$EFFECTIVE_STATUS" = "incomplete" ]; }; then
+            exit "$ARTIFACT_STATUS"
+          fi
         fi
 
-        LEVEL=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).level.index")
-        NAME=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).level.name")
-        PERCENT=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).score.percent")
-        EFF_LEVEL=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).effective.level.index")
-        EFF_PERCENT=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).effective.score.percent")
-        GATE=$(node -p "JSON.parse(require('fs').readFileSync('harness-report.json','utf8')).gate")
-        GATE_LEVEL=$(node -p "const r=JSON.parse(require('fs').readFileSync('harness-report.json','utf8')); (r.gate==='effective'?r.effective:r).level.index")
-        GATE_GAPS=$(node -p "const r=JSON.parse(require('fs').readFileSync('harness-report.json','utf8')); (r.gate==='effective'?r.effective:r).level.nextLevelGaps.join('; ')")
-        echo "level=$LEVEL" >> "$GITHUB_OUTPUT"
-        echo "level-name=$NAME" >> "$GITHUB_OUTPUT"
-        echo "percent=$PERCENT" >> "$GITHUB_OUTPUT"
-        echo "effective-level=$EFF_LEVEL" >> "$GITHUB_OUTPUT"
-        echo "effective-percent=$EFF_PERCENT" >> "$GITHUB_OUTPUT"
-        echo "## Harness Score: L$LEVEL · $NAME ($PERCENT% maturity)" >> "$GITHUB_STEP_SUMMARY"
-        if [ "$EFF_LEVEL" != "$LEVEL" ] || [ "$EFF_PERCENT" != "$PERCENT" ]; then
-          echo "Effective: L$EFF_LEVEL ($EFF_PERCENT%) · gate: $GATE" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$SCAN_STATUS" -ne 0 ] && [ "$SCAN_STATUS" -ne 2 ]; then
+          exit "$SCAN_STATUS"
         fi
-        node -e "
-          const r = JSON.parse(require('fs').readFileSync('harness-report.json','utf8'));
-          const rows = r.dimensions.map(d => '| ' + d.title + ' | ' + d.earned + '/' + d.max + ' | ' + d.percent + '% |').join('\n');
-          require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n| Dimension | Score | % |\n|---|---|---|\n' + rows + '\n');
-        "
+
+        if [ "$MATURITY_STATUS" != "complete" ]; then
+          [ "$SCAN_STATUS" -ne 0 ] && exit "$SCAN_STATUS"
+          exit 2
+        fi
+
+        if [ "$GATE" = "effective" ] && [ "$EFFECTIVE_STATUS" != "complete" ]; then
+          [ "$SCAN_STATUS" -ne 0 ] && exit "$SCAN_STATUS"
+          exit 2
+        fi
+
+        if [ "$SCAN_STATUS" -ne 0 ] && ! { [ "$SCAN_STATUS" -eq 2 ] && [ "$EFFECTIVE_STATUS" = "incomplete" ] && [ "$GATE" = "maturity" ]; }; then
+          exit "$SCAN_STATUS"
+        fi
+
+        GATE_LEVEL="$LEVEL"
+        [ "$GATE" = "effective" ] && GATE_LEVEL="$EFF_LEVEL"
 
         if [ "$GATE_LEVEL" -lt "$HS_MIN_LEVEL" ]; then
           echo "::error::Harness ${GATE} L${GATE_LEVEL} is below required L${HS_MIN_LEVEL}."
-          echo "$GATE_GAPS"
+          node -e "const r=require('./harness-report.json'); console.log((r.gate==='effective'?r.effective:r).level.nextLevelGaps.join('; '))"
           exit 1
         fi
 
@@ -168,15 +214,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         HS_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        HS_CONFIG: ${{ inputs.config }}
         HS_VERSION: ${{ inputs.version }}
         HS_WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
+        BASELINE_ARGS=(--quiet --json)
+        [ -n "$HS_CONFIG" ] && BASELINE_ARGS+=(--config "$HS_CONFIG")
         git fetch origin "$HS_BASE_REF"
         git worktree remove /tmp/harness-score-base --force 2>/dev/null || true
         git worktree add /tmp/harness-score-base FETCH_HEAD
         npx -y "harness-score@$HS_VERSION" "/tmp/harness-score-base/$HS_WORKING_DIRECTORY" \
-          --quiet --json > /tmp/harness-score-base.json
+          "${BASELINE_ARGS[@]}" > /tmp/harness-score-base.json
         git worktree remove /tmp/harness-score-base --force
 
     - id: diff
@@ -184,10 +233,13 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
+        HS_CONFIG: ${{ inputs.config }}
         HS_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        npx -y "harness-score@$HS_VERSION" . --quiet --json \
+        DIFF_ARGS=(--quiet --json)
+        [ -n "$HS_CONFIG" ] && DIFF_ARGS+=(--config "$HS_CONFIG")
+        npx -y "harness-score@$HS_VERSION" . "${DIFF_ARGS[@]}" \
           --diff /tmp/harness-score-base.json > /tmp/harness-score-diff.json
 
     - id: comment

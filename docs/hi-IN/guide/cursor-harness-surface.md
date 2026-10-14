@@ -140,6 +140,8 @@ Cursor plugin rules, skills, commands, hooks, agents, और MCP config को `
 [Cursor Marketplace](https://cursor.com/marketplace) से distribute होता है। plugins harness engineering के लिए महत्वपूर्ण हैं क्योंकि harness patterns **रिपॉज़िटरी में reusable** बनाते हैं — including
 [Harness Score plugin](./measure-and-improve#the-cursor-plugin) जो इस अध्याय के artifacts audit करता है (आज repo directory से install; Marketplace listing pending review)।
 
+**Plugin repository** scan करने पर (manifest scan root पर), `harness-score` default plugin `skills/`, `commands/`, `agents/`, `hooks/hooks.json` को `.cursor/...` layout जैसे checks में map करता है — [अध्याय 8 — plugin layouts](./measure-and-improve#skl-01) देखें।
+
 ## सही mechanism चुनना
 
 | आप चाहते हैं… | उपयोग करें |

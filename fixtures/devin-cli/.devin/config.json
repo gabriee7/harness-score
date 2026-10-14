@@ -1,0 +1,15 @@
+{
+  "model": "default",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Reference fixture; gate and feedback hooks are defined in hooks.v1.json per Devin docs."
+          }
+        ]
+      }
+    ]
+  }
+}

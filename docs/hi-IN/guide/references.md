@@ -22,9 +22,12 @@
 - **[Cursor Marketplace](https://cursor.com/marketplace)** और
   **[plugin spec repository](https://github.com/cursor/plugins)** — प्लगइन package, review, distribute कैसे होते हैं।
 
-### Claude Code, Windsurf, और अन्य
+### Claude Code, Devin, Windsurf, और अन्य
 
-[Multi-Harness Support](./multi-harness) देखें — Harness Score Claude Code (`.claude/agents/`, hooks), Windsurf (`.windsurf/rules/`), Cline (`.clinerules/`), Continue, Codex, और अन्य टूल के समकक्ष artifacts कैसे पहचानता है।
+[Multi-Harness Support](./multi-harness) देखें — Harness Score Claude Code (`.claude/agents/`, hooks), Devin (`.devin/skills/` और `.devin/hooks.v1.json` या `.devin/config.json` में hooks), Windsurf (`.windsurf/rules/`), Cline (`.clinerules/`), Continue, Codex, और अन्य टूल के समकक्ष artifacts कैसे पहचानता है।
+
+- **[Devin CLI extensibility](https://docs.devin.ai/cli/extensibility)** — skills, hooks, और
+  `.devin/config.json` layout (event maps और handler shapes के लिए official reference)।
 
 ## संबंधित कार्य
 

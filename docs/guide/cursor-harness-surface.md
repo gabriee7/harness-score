@@ -186,6 +186,11 @@ repositories** — including the
 audits the very artifacts this chapter described (installable from its
 repo directory today; its Marketplace listing is pending review).
 
+When you scan a **plugin repository** (manifest at the scan root), `harness-score`
+maps default plugin `skills/`, `commands/`, `agents/`, and `hooks/hooks.json`
+to the same checks as `.cursor/...` layout — see
+[chapter 8 — plugin layouts](./measure-and-improve#skl-01).
+
 ## Choosing the right mechanism
 
 | You want to… | Use |

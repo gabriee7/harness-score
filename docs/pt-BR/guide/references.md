@@ -34,12 +34,15 @@ As fontes que este guia consolida, aproximadamente por ordem de influência.
   **[repositório de spec de plugins](https://github.com/cursor/plugins)** — como
   plugins são empacotados, revisados e distribuídos.
 
-### Claude Code, Windsurf e outros
+### Claude Code, Devin, Windsurf e outros
 
-Veja [Suporte multi-harness](./multi-harness) para como o Harness Score
-reconhece artefatos equivalentes do Claude Code (`.claude/agents/`, hooks),
-Windsurf (`.windsurf/rules/`), Cline (`.clinerules/`), Continue, Codex e
-outras ferramentas.
+Veja [Suporte multi-harness](./multi-harness) para como o Harness Score reconhece artefatos
+equivalentes do Claude Code (`.claude/agents/`, hooks), do Devin (`.devin/skills/` e hooks em
+`.devin/hooks.v1.json` ou `.devin/config.json`), do Windsurf (`.windsurf/rules/`), do Cline
+(`.clinerules/`), Continue, Codex e outras ferramentas.
+
+- **[Extensibilidade do Devin CLI](https://docs.devin.ai/cli/extensibility)** — skills, hooks e layout de
+  `.devin/config.json` (referência oficial para mapas de eventos e handlers).
 
 ## Trabalhos adjacentes
 

@@ -1,5 +1,133 @@
 # harness-score
 
+## 1.8.2
+
+### Patch Changes
+
+- 9e8b0cb: Limit CI test and static-check detection to executed commands, ignoring workflow labels.
+
+  Thanks to [@paladini](https://github.com/paladini) for reporting this issue.
+
+## 1.8.1
+
+### Patch Changes
+
+- 6f5ff5a: Recognize Node's built-in test runner (`node:test`) as a configured test runner for SNS-01, including repositories with no package.json. When test files exist without a runner, SNS-01 names them instead of claiming that no runner was found.
+
+  Thanks to [@lglucas](https://github.com/lglucas) for reporting this.
+
+## 1.8.0
+
+### Minor Changes
+
+- 99eb3f4: HYG-05 is not applicable when a repository has no LICENSE file and the root `composer.json` or `package.json` `license` is `proprietary` or `UNLICENSED`. HYG-08 is not applicable when the repository has no MCP config. Not-applicable checks stay in the report with `checks[].applicable: false` and drop out of the score numerator and denominator. Adopting MCP later, or removing a closed-source license declaration, shows up in `--diff` as an applicability change.
+
+  Thanks to [@andersonRogani](https://github.com/andersonRogani) for reporting this.
+
+## 1.7.5
+
+### Patch Changes
+
+- 3be2590: Recognize Astral ty as a Python type checker. SNS-03 accepts `ty.toml` and `[tool.ty]` tables (including nested projects), and CI-03 accepts `ty check` in CI, including `uv run` and `uvx`.
+
+  Thanks to [@hiagot](https://github.com/hiagot) for contributing this change.
+
+## 1.7.4
+
+### Patch Changes
+
+- 77dc691: No scanner changes. Corrects release attribution for the Claude Code context scoring fix ([#80](https://github.com/paladini/harness-score/issues/80)).
+
+  Thanks to [Renato Spakauskas](https://www.linkedin.com/in/renatospakauskas/) for originally reporting this via LinkedIn. Thanks to [@paladini](https://github.com/paladini) for release maintenance.
+
+## 1.7.3
+
+### Patch Changes
+
+- 6d4d281: Treat Claude Code `.claude/CLAUDE.md` and `.claude/AGENTS.md` as project guides (CTX-01/02) instead of scoped rules, and recognize `.claude/rules/**/*.md` for CTX-03..06 with optional `paths` frontmatter.
+
+  **Score impact:** Repositories whose only rule-like file was `.claude/CLAUDE.md` or `.claude/AGENTS.md` lose 11 context points and can drop from L4 to L1; guide credit remains via CTX-01. Repos with `.claude/rules/` or nested context files in code directories keep or gain rule points.
+
+  Thanks to [Renato Spakauskas](https://www.linkedin.com/in/renatospakauskas/) for originally reporting this via LinkedIn ([#80](https://github.com/paladini/harness-score/issues/80)). Thanks to [@paladini](https://github.com/paladini) for filing the GitHub issue and shipping the fix.
+
+## 1.7.2
+
+### Patch Changes
+
+- 251d254: Recognize Claude Code and Cursor plugin default layouts when scanning a plugin repository root (`.claude-plugin/plugin.json` or `.cursor-plugin/plugin.json`), and include user-scoped Claude Code plugin installs from `~/.claude/plugins/installed_plugins.json` in the effective score when `--scope user` is enabled.
+
+  Thanks to [@almerindo](https://github.com/almerindo) for reporting this.
+
+## 1.7.1
+
+### Patch Changes
+
+- 19feb7d: Recognize PHP sensor tooling (PHPUnit/Pest, PHPStan/Psalm, PHPCS/Rector, Pint/PHP-CS-Fixer) and resolve Composer script bodies when inspecting CI workflows.
+
+  Thanks to [@andersonRogani](https://github.com/andersonRogani) for reporting the gap and suggesting detection signals in issue #72.
+
+## 1.7.0
+
+### Minor Changes
+
+- 5bebb05: Recognize Devin skills (`.devin/skills/*/SKILL.md`) and hooks (standalone `.devin/hooks.v1.json` or the `hooks` key in `.devin/config.json`), including event validation, config precedence, and `${DEVIN_PROJECT_DIR}` script path resolution.
+
+  Thanks to [@diegoflassa](https://github.com/diegoflassa) for contributing this
+  change.
+
+## 1.6.5
+
+### Patch Changes
+
+- c1f6b16: Skip `.devbox/` during scans. Devbox provisions this directory with binary
+  symlinks (e.g. `.devbox/bin/devbox`) that resolve outside the repo root,
+  which previously made the whole scan report incomplete via
+  `outside-root-symlink`.
+
+  Thanks to [@PAHJunior](https://github.com/PAHJunior) for contributing this
+  fix.
+
+## 1.6.4
+
+### Patch Changes
+
+- Synchronize the compact check catalog with the implemented Harness Score weights in English,
+  Portuguese, Spanish, Simplified Chinese, and Hindi. Documentation tests now protect check
+  weights, complete table rows, dimension totals, detailed catalog headings, overall totals,
+  and maturity thresholds across all five locales.
+
+## 1.6.3
+
+### Patch Changes
+
+- 4212dab: Detect Forgejo Actions workflows in `.forgejo/workflows/` for CI checks.
+
+## 1.6.2
+
+### Patch Changes
+
+- 9b55d4f: Detect Google Cloud Build CI configurations under `cloudbuild/` for CI checks.
+
+## 1.6.1
+
+### Patch Changes
+
+- 7124092: Detect non-GitHub CI configuration files in nested workspace projects. Thanks
+  to [@felipecontratres-gupy](https://github.com/felipecontratres-gupy) for
+  reporting the issue and contributing the initial fix.
+  Thanks also to [@dbtorrico](https://github.com/dbtorrico) for catching the
+  guide locale parity gap and providing translation suggestions.
+
+## 1.6.0
+
+### Minor Changes
+
+- 22767b4: Scan the complete repository tree without a production depth cap, raise the
+  file-count fuse to 1,000,000, and decide incomplete-scan failures from the
+  selected gate while preserving authoritative maturity outputs. Discovered
+  paths that cannot be inspected and symlinks that escape the scan root now also
+  make the affected snapshot incomplete.
+
 ## 1.5.3
 
 ### Patch Changes

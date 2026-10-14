@@ -4,7 +4,14 @@ import * as path from 'node:path';
 import type { ExtraRootEntry } from '../config.js';
 import type { ScanOverlay } from '../scan.js';
 import type { ScanIncompleteReason } from '../types.js';
-import { compareLexically } from '../util.js';
+import { compareLexically, safeJsonParse } from '../util.js';
+import {
+  claudePluginsRegistryPath,
+  collectClaudePluginInstall,
+  parseInstalledPluginsRegistry,
+  readClaudeEnabledPlugins,
+  shouldIncludeInstalledPlugin,
+} from './plugins.js';
 import { PATH_SPECS } from './registry.js';
 
 const OVERLAY_MAX_DEPTH = 8;
@@ -299,7 +306,46 @@ export function buildUserOverlay(): ScanOverlay | null {
     collectFile(abs, rel, files);
   }
 
+  collectClaudeUserInstalledPlugins(home, files, incompleteReasons);
+
   return overlayFromMap('user', files, incompleteReasons);
+}
+
+function collectClaudeUserInstalledPlugins(
+  home: string,
+  files: Map<string, string>,
+  incompleteReasons: ScanIncompleteReason[],
+): void {
+  const registryPath = claudePluginsRegistryPath(home);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(registryPath, 'utf8');
+  } catch {
+    return;
+  }
+  const parsed = safeJsonParse(raw);
+  if (parsed === undefined) {
+    addFirstReason(incompleteReasons, {
+      code: 'unreadable-path',
+      path: 'user:.claude/plugins/installed_plugins.json',
+    });
+    return;
+  }
+  const registry = parseInstalledPluginsRegistry(parsed);
+  if (!registry) {
+    addFirstReason(incompleteReasons, {
+      code: 'unreadable-path',
+      path: 'user:.claude/plugins/installed_plugins.json',
+    });
+    return;
+  }
+  const enabledPlugins = readClaudeEnabledPlugins(home);
+  for (const [pluginKey, entries] of Object.entries(registry)) {
+    for (const entry of entries) {
+      if (!shouldIncludeInstalledPlugin(pluginKey, entry, enabledPlugins)) continue;
+      collectClaudePluginInstall(entry.installPath!, pluginKey, files, true);
+    }
+  }
 }
 
 /** System-level harness locations (minimal v1 — expand when paths are validated). */

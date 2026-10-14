@@ -118,7 +118,7 @@ For a typical product repository, the floor looks like:
 
 - [ ] `.gitignore` covering env files; no real secrets in the tree
 - [ ] `mcp.json` clean of literal credentials
-- [ ] `hooks.json` with one shell gate (destructive patterns → deny/ask)
+- [ ] A recognized hooks config (`.cursor/hooks.json`, Claude Code `settings.json`, `.devin/hooks.v1.json`, or `.devin/config.json` hooks key) with one gate (destructive patterns → deny/ask)
 - [ ] One feedback hook (format/lint on edit)
 - [ ] Branch protection with required CI checks
 

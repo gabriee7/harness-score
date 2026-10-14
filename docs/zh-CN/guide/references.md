@@ -22,9 +22,12 @@
 - **[Cursor Marketplace](https://cursor.com/marketplace)** 与
   **[插件 spec 仓库](https://github.com/cursor/plugins)** — 插件如何打包、审查与分发。
 
-### Claude Code、Windsurf 及其他
+### Claude Code、Devin、Windsurf 及其他
 
-见 [多 harness 支持](./multi-harness)，了解 Harness Score 如何识别 Claude Code（`.claude/agents/`、hooks）、Windsurf（`.windsurf/rules/`）、Cline（`.clinerules/`）、Continue、Codex 等工具的等价 artifact。
+见 [多 harness 支持](./multi-harness)，了解 Harness Score 如何识别 Claude Code（`.claude/agents/`、hooks）、Devin（`.devin/skills/` 以及 `.devin/hooks.v1.json` 或 `.devin/config.json` 中的 hooks）、Windsurf（`.windsurf/rules/`）、Cline（`.clinerules/`）、Continue、Codex 等工具的等价 artifact。
+
+- **[Devin CLI 扩展能力](https://docs.devin.ai/cli/extensibility)** — skills、hooks 与
+  `.devin/config.json` 布局（event 映射与 handler 结构的官方参考）。
 
 ## 相关工作
 

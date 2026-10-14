@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * Mirrors packages/cli/package.json's version into every release surface:
- * TOOL_VERSION in score.ts, jsr.json, package-lock.json, and both GitHub
- * Action entrypoints. Run after `npx changeset version` (which only bumps
- * package.json + CHANGELOG.md) and before committing a release.
+ * TOOL_VERSION in score.ts, jsr.json, package-lock.json, both GitHub Action
+ * entrypoints, and the Action README input table. Run after
+ * `npx changeset version` (which only bumps package.json + CHANGELOG.md) and
+ * before committing a release.
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -18,6 +19,7 @@ const scorePath = path.join(CLI_DIR, 'src', 'score.ts');
 const jsrPath = path.join(CLI_DIR, 'jsr.json');
 const lockPath = path.join(ROOT, 'package-lock.json');
 const actionPaths = [path.join(ROOT, 'action.yml'), path.join(ROOT, 'action', 'action.yml')];
+const actionReadmePath = path.join(ROOT, 'action', 'README.md');
 
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const version = pkg.version;
@@ -57,6 +59,15 @@ for (const actionPath of actionPaths) {
   fs.writeFileSync(actionPath, metadata.replace(actionVersionRe, `$1${version}$2`));
 }
 
+const actionReadme = fs.readFileSync(actionReadmePath, 'utf8');
+const actionReadmeVersionRe =
+  /^(\| `version` \| `)[^`]+(` \| harness-score npm version or package spec \|)$/m;
+if (!actionReadmeVersionRe.test(actionReadme)) {
+  console.error(`Could not find the version input row in ${path.relative(ROOT, actionReadmePath)}.`);
+  process.exit(1);
+}
+fs.writeFileSync(actionReadmePath, actionReadme.replace(actionReadmeVersionRe, `$1${version}$2`));
+
 // JSON.stringify expands short arrays onto multiple lines; Biome restores the
 // repository's canonical JSON formatting.
 const format = spawnSync('npx', ['biome', 'format', '--write', jsrPath, lockPath], {
@@ -69,4 +80,4 @@ if (format.status !== 0) {
   process.exit(format.status ?? 1);
 }
 
-console.log(`Synced CLI, JSR, lockfile, and GitHub Action versions to ${version}.`);
+console.log(`Synced CLI, JSR, lockfile, GitHub Action, and Action README versions to ${version}.`);

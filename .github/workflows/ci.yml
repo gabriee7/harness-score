@@ -59,51 +59,140 @@ jobs:
           HS_LEVEL: ${{ steps.action-smoke.outputs.level }}
           HS_LEVEL_NAME: ${{ steps.action-smoke.outputs.level-name }}
           HS_PERCENT: ${{ steps.action-smoke.outputs.percent }}
+          HS_EFFECTIVE_LEVEL: ${{ steps.action-smoke.outputs.effective-level }}
+          HS_EFFECTIVE_PERCENT: ${{ steps.action-smoke.outputs.effective-percent }}
         run: |
           test "$HS_LEVEL" = "4"
           test "$HS_LEVEL_NAME" = "Self-correcting"
           test "$HS_PERCENT" = "100"
+          test "$HS_EFFECTIVE_LEVEL" = "4"
+          test "$HS_EFFECTIVE_PERCENT" = "100"
           test -s "$RUNNER_TEMP/harness-action-fixture/harness-badge.svg"
           test -s "$RUNNER_TEMP/harness-action-fixture/harness-report.md"
-      - name: Prepare incomplete GitHub Action smoke fixture
+      - name: Prepare effective-incomplete GitHub Action smoke fixtures
         shell: bash
         run: |
-          ROOT="$RUNNER_TEMP/harness-action-incomplete"
-          mkdir -p "$ROOT"
-          NESTED="$ROOT"
-          for DEPTH in $(seq 0 10); do
+          MATURITY_ROOT="$RUNNER_TEMP/harness-action-effective-maturity"
+          EFFECTIVE_ROOT="$RUNNER_TEMP/harness-action-effective-gate"
+          SHARED_ROOT="$RUNNER_TEMP/harness-action-effective-shared"
+          cp -R fixtures/level-4 "$MATURITY_ROOT"
+          cp -R fixtures/level-4 "$EFFECTIVE_ROOT"
+          mkdir -p "$SHARED_ROOT"
+          NESTED="$SHARED_ROOT"
+          for DEPTH in $(seq 0 9); do
             NESTED="$NESTED/d$DEPTH"
             mkdir "$NESTED"
           done
-      - name: Reject incomplete GitHub Action scan
-        id: action-incomplete
+          printf '# Too deep\n' > "$NESTED/AGENTS.md"
+          HS_MATURITY_ROOT="$MATURITY_ROOT" \
+          HS_EFFECTIVE_ROOT="$EFFECTIVE_ROOT" \
+          HS_SHARED_ROOT="$SHARED_ROOT" \
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const config = JSON.stringify({
+            extraRoots: [{ id: 'team', path: process.env.HS_SHARED_ROOT }],
+          });
+          for (const root of [process.env.HS_MATURITY_ROOT, process.env.HS_EFFECTIVE_ROOT]) {
+            fs.writeFileSync(path.join(root, '.harness-score.json'), config);
+          }
+          NODE
+      - name: Keep maturity authoritative when effective is incomplete
+        id: action-effective-incomplete-maturity
+        uses: ./
+        with:
+          version: 'file:${{ github.workspace }}/packages/cli'
+          working-directory: ${{ runner.temp }}/harness-action-effective-maturity
+          gate: maturity
+          min-level: '4'
+          badge: 'maturity-badge.svg'
+          report: 'maturity-report.md'
+      - name: Verify maturity-gated effective-incomplete result
+        shell: bash
+        env:
+          HS_LEVEL: ${{ steps.action-effective-incomplete-maturity.outputs.level }}
+          HS_LEVEL_NAME: ${{ steps.action-effective-incomplete-maturity.outputs.level-name }}
+          HS_PERCENT: ${{ steps.action-effective-incomplete-maturity.outputs.percent }}
+          HS_EFFECTIVE_LEVEL: ${{ steps.action-effective-incomplete-maturity.outputs.effective-level }}
+          HS_EFFECTIVE_PERCENT: ${{ steps.action-effective-incomplete-maturity.outputs.effective-percent }}
+        run: |
+          test "$HS_LEVEL" = "4"
+          test "$HS_LEVEL_NAME" = "Self-correcting"
+          test "$HS_PERCENT" = "100"
+          test -z "$HS_EFFECTIVE_LEVEL"
+          test -z "$HS_EFFECTIVE_PERCENT"
+          test -s "$RUNNER_TEMP/harness-action-effective-maturity/maturity-badge.svg"
+          test -s "$RUNNER_TEMP/harness-action-effective-maturity/maturity-report.md"
+      - name: Reject effective gate when effective is incomplete
+        id: action-effective-incomplete-gate
         continue-on-error: true
         uses: ./
         with:
           version: 'file:${{ github.workspace }}/packages/cli'
-          working-directory: ${{ runner.temp }}/harness-action-incomplete
-          min-level: '0'
-          badge: 'incomplete-badge.svg'
-          report: 'incomplete-report.md'
-      - name: Verify incomplete Action publishes no authoritative outputs or artifacts
+          working-directory: ${{ runner.temp }}/harness-action-effective-gate
+          gate: effective
+          min-level: '4'
+          badge: 'maturity-badge.svg'
+          report: 'maturity-report.md'
+      - name: Verify failed effective gate keeps only maturity authoritative
         if: ${{ always() }}
         shell: bash
         env:
-          HS_OUTCOME: ${{ steps.action-incomplete.outcome }}
-          HS_LEVEL: ${{ steps.action-incomplete.outputs.level }}
-          HS_LEVEL_NAME: ${{ steps.action-incomplete.outputs.level-name }}
-          HS_PERCENT: ${{ steps.action-incomplete.outputs.percent }}
-          HS_EFFECTIVE_LEVEL: ${{ steps.action-incomplete.outputs.effective-level }}
-          HS_EFFECTIVE_PERCENT: ${{ steps.action-incomplete.outputs.effective-percent }}
+          HS_OUTCOME: ${{ steps.action-effective-incomplete-gate.outcome }}
+          HS_LEVEL: ${{ steps.action-effective-incomplete-gate.outputs.level }}
+          HS_LEVEL_NAME: ${{ steps.action-effective-incomplete-gate.outputs.level-name }}
+          HS_PERCENT: ${{ steps.action-effective-incomplete-gate.outputs.percent }}
+          HS_EFFECTIVE_LEVEL: ${{ steps.action-effective-incomplete-gate.outputs.effective-level }}
+          HS_EFFECTIVE_PERCENT: ${{ steps.action-effective-incomplete-gate.outputs.effective-percent }}
         run: |
+          test "$HS_OUTCOME" = "failure"
+          test "$HS_LEVEL" = "4"
+          test "$HS_LEVEL_NAME" = "Self-correcting"
+          test "$HS_PERCENT" = "100"
+          test -z "$HS_EFFECTIVE_LEVEL"
+          test -z "$HS_EFFECTIVE_PERCENT"
+          test -s "$RUNNER_TEMP/harness-action-effective-gate/maturity-badge.svg"
+          test -s "$RUNNER_TEMP/harness-action-effective-gate/maturity-report.md"
+      - name: Prepare unreadable maturity smoke fixture
+        shell: bash
+        run: |
+          ROOT="$RUNNER_TEMP/harness-action-maturity-incomplete"
+          mkdir -p "$ROOT/blocked"
+          printf 'unreadable\n' > "$ROOT/blocked/evidence.txt"
+          chmod 000 "$ROOT/blocked"
+      - name: Reject incomplete maturity scan
+        id: action-maturity-incomplete
+        continue-on-error: true
+        uses: ./
+        with:
+          version: 'file:${{ github.workspace }}/packages/cli'
+          working-directory: ${{ runner.temp }}/harness-action-maturity-incomplete
+          min-level: '0'
+          badge: 'incomplete-badge.svg'
+          report: 'incomplete-report.md'
+      - name: Verify incomplete maturity publishes no authoritative outputs or artifacts
+        if: ${{ always() }}
+        shell: bash
+        env:
+          HS_OUTCOME: ${{ steps.action-maturity-incomplete.outcome }}
+          HS_LEVEL: ${{ steps.action-maturity-incomplete.outputs.level }}
+          HS_LEVEL_NAME: ${{ steps.action-maturity-incomplete.outputs.level-name }}
+          HS_PERCENT: ${{ steps.action-maturity-incomplete.outputs.percent }}
+          HS_EFFECTIVE_LEVEL: ${{ steps.action-maturity-incomplete.outputs.effective-level }}
+          HS_EFFECTIVE_PERCENT: ${{ steps.action-maturity-incomplete.outputs.effective-percent }}
+        run: |
+          ROOT="$RUNNER_TEMP/harness-action-maturity-incomplete"
+          trap 'chmod 700 "$ROOT/blocked"' EXIT
           test "$HS_OUTCOME" = "failure"
           test -z "$HS_LEVEL"
           test -z "$HS_LEVEL_NAME"
           test -z "$HS_PERCENT"
           test -z "$HS_EFFECTIVE_LEVEL"
           test -z "$HS_EFFECTIVE_PERCENT"
-          test ! -e "$RUNNER_TEMP/harness-action-incomplete/incomplete-badge.svg"
-          test ! -e "$RUNNER_TEMP/harness-action-incomplete/incomplete-report.md"
+          test ! -e "$ROOT/incomplete-badge.svg"
+          test ! -e "$ROOT/incomplete-report.md"
+          test "$(node -p "require('$ROOT/harness-report.json').verdicts.maturity.status")" = "incomplete"
+          test "$(node -p "require('$ROOT/harness-report.json').verdicts.maturity.reasons[0].code")" = "unreadable-directory"
       - name: Consumer-facing type packaging check (typecheck:consumer)
         run: npm run typecheck:consumer -w harness-score
       - name: Published types match runtime exports (attw)

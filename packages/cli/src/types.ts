@@ -22,11 +22,11 @@ export interface ScanContext {
   files: string[];
   /** Compatibility alias: true whenever the scan is incomplete for any reason. */
   truncated: boolean;
-  /** Deterministic reasons the filesystem walk could not complete. */
+  /** Deterministic reasons the filesystem walk or a requested file read could not complete. */
   incompleteReasons?: ScanIncompleteReason[];
   /** True when the relative path exists as a file. */
   has(relPath: string): boolean;
-  /** File content as UTF-8, or null when missing/unreadable. Cached. */
+  /** File content as UTF-8, or null when missing/unreadable/over the read limit. Cached. */
   read(relPath: string): string | null;
   /** All files whose relative path matches the regex. */
   matching(re: RegExp): string[];
@@ -39,7 +39,12 @@ export interface ScanDiagnostic {
   source?: string;
 }
 
-export type ScanIncompleteReasonCode = 'file-count-limit' | 'depth-limit' | 'unreadable-directory';
+export type ScanIncompleteReasonCode =
+  | 'file-count-limit'
+  | 'depth-limit'
+  | 'unreadable-directory'
+  | 'unreadable-path'
+  | 'outside-root-symlink';
 
 export interface ScanIncompleteReason {
   code: ScanIncompleteReasonCode;
@@ -58,6 +63,11 @@ export interface CheckOutcome {
   passed: boolean;
   /** Human-readable proof: what was found (or not found) and where. */
   evidence: string;
+  /**
+   * When false, the check does not apply to this repository and is excluded
+   * from both the numerator and the denominator. Defaults to true.
+   */
+  applicable?: boolean;
   /** Forward-compatible or secondary findings that do not change points. */
   warnings?: ScanDiagnostic[];
 }
@@ -85,6 +95,12 @@ export interface CheckResult {
   docsUrl: string;
   /** Resolved severity ('off' checks are excluded from scoring but still listed here). */
   severity: Severity;
+  /**
+   * False when the check does not apply to this repository. Excluded from
+   * scoring, distinct from severity 'off' (which is config). Older reports
+   * omit this field; treat a missing value as true.
+   */
+  applicable: boolean;
   /** Non-fatal diagnostics emitted while evaluating this check. */
   warnings?: ScanDiagnostic[];
 }
@@ -96,7 +112,7 @@ export interface DimensionScore {
   max: number;
   /** 0–100, rounded. */
   percent: number;
-  /** False only when every check in this dimension resolved to 'off' (excluded by config). */
+  /** False when no check in this dimension is scored ('off' and/or not applicable). */
   applicable: boolean;
 }
 
@@ -136,7 +152,7 @@ export interface PresetInfo {
 export interface Report {
   tool: { name: string; version: string };
   root: string;
-  /** Compatibility alias: true whenever either requested scan scope is incomplete. */
+  /** Compatibility alias: true whenever the maturity or effective snapshot is incomplete. */
   truncated: boolean;
   /** Authoritative completeness for repository-only and effective snapshots. */
   verdicts?: { maturity: ScanVerdict; effective: ScanVerdict };

@@ -23,6 +23,19 @@ agree on the approach first — check changes touch multiple files that must
 stay in sync (see below) and are easiest to get right with agreement up
 front. Small fixes (typos, docs, obvious bugs) can go straight to a PR.
 
+## Language on GitHub
+
+You may open issues and PR descriptions in any language. **Maintainer and
+bot comments on this repo's GitHub threads (issues, PRs, reviews) are in
+English** so the record stays accessible to all contributors. Changeset
+summaries that ship in `packages/cli/CHANGELOG.md` should also be in English,
+with explicit `@username` credit when someone other than the merge author
+contributed the change.
+
+Maintainers helping on a **fork PR** should push fixes to the PR's head
+branch so CI and review stay on that PR — not to `main` locally ahead of
+`origin/main`.
+
 ## Project layout
 
 ```

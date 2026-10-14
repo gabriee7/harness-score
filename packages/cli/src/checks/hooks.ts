@@ -8,16 +8,17 @@ export const hookChecks: Check[] = [
     title: 'Hooks configuration present and valid JSON',
     points: 4,
     remediation:
-      'Create a hooks configuration (.cursor/hooks.json or .claude/settings.json hooks key) — hooks are the harness layer that can observe and control the agent loop deterministically.',
+      'Create a hooks configuration (.cursor/hooks.json, .claude/settings.json hooks key, .devin/hooks.v1.json event map, or .devin/config.json hooks key) — hooks are the harness layer that can observe and control the agent loop deterministically.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
         return {
           passed: false,
-          evidence: 'No .cursor/hooks.json or .claude/settings.json hooks configuration found.',
+          evidence:
+            'No .cursor/hooks.json, .claude/settings.json hooks key, plugin hooks/hooks.json, .devin/hooks.v1.json, or .devin/config.json hooks key found.',
         };
       }
-      if (!hooks.hasHooksObject) {
+      if (!hooks.hasEventMap) {
         return {
           passed: false,
           evidence: `${hooks.source}: ${hooks.structuralErrors[0] ?? 'hooks object is missing.'}`,
@@ -43,7 +44,10 @@ export const hookChecks: Check[] = [
       if (!hooks) {
         return { passed: false, evidence: 'No parseable hooks configuration.' };
       }
-      const passed = hooks.hasVersion && hooks.events.length > 0 && hooks.structuralErrors.length === 0;
+      const passed =
+        hooks.versionRequirement !== 'missing' &&
+        hooks.events.length > 0 &&
+        hooks.structuralErrors.length === 0;
       return {
         passed,
         evidence:
@@ -51,7 +55,7 @@ export const hookChecks: Check[] = [
             ? `${hooks.source} has no registered events.`
             : hooks.structuralErrors.length > 0
               ? `${hooks.source}: ${hooks.structuralErrors.join(' ')}`
-              : !hooks.hasVersion
+              : hooks.versionRequirement === 'missing'
                 ? `${hooks.source} is missing required version metadata.`
                 : `${hooks.source}: events: ${hooks.events.join(', ')}.`,
         warnings: hooks.eventWarnings,
@@ -64,7 +68,7 @@ export const hookChecks: Check[] = [
     title: 'Gate hook guards risky operations',
     points: 4,
     remediation:
-      'Register a gate hook (Cursor: beforeShellExecution / beforeMCPExecution / preToolUse; Claude Code: PreToolUse) that returns allow/deny/ask for destructive operations.',
+      'Register a gate hook (Cursor: beforeShellExecution / beforeMCPExecution / preToolUse / beforeReadFile; Claude Code or Devin: PreToolUse / PermissionRequest) that guards destructive operations.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
@@ -84,7 +88,7 @@ export const hookChecks: Check[] = [
     title: 'Feedback hook observes agent output',
     points: 2,
     remediation:
-      'Register a feedback hook (Cursor: afterFileEdit / postToolUse / stop; Claude Code: PostToolUse) — e.g. auto-format edited files or run a quick lint.',
+      'Register a feedback hook (Cursor: afterFileEdit / postToolUse / stop; Claude Code: PostToolUse; Devin: PostToolUse / Stop) — e.g. auto-format edited files or run a quick lint.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {

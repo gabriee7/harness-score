@@ -1,6 +1,7 @@
 import type { ReportDiff } from '../diff.js';
 import { toolDisplayName } from '../harness/registry.js';
-import type { Report } from '../types.js';
+import { checkIsScored } from '../score.js';
+import type { CheckResult, Report } from '../types.js';
 import { formatIncompleteReason, reportScopeIsComplete, reportVerdict } from '../verdict.js';
 
 const useColor = process.stdout.isTTY === true && process.env.NO_COLOR === undefined;
@@ -63,13 +64,27 @@ function renderDiffSection(diff: ReportDiff): string[] {
   }
   const gained = diff.checksChanged.filter((c) => c.change === 'newly-passing');
   const lost = diff.checksChanged.filter((c) => c.change === 'newly-failing');
+  const becameApplicable = diff.checksChanged.filter((c) => c.change === 'became-applicable');
+  const becameNotApplicable = diff.checksChanged.filter((c) => c.change === 'became-not-applicable');
   if (gained.length > 0) {
     lines.push(`    ${green('Newly passing:')} ${gained.map((c) => c.id).join(', ')}`);
   }
   if (lost.length > 0) {
     lines.push(`    ${red('Newly failing:')} ${lost.map((c) => c.id).join(', ')}`);
   }
-  if (gained.length === 0 && lost.length === 0 && diff.dimensions.every((d) => d.delta === 0)) {
+  if (becameApplicable.length > 0) {
+    lines.push(`    ${dim('Now applicable:')} ${becameApplicable.map((c) => c.id).join(', ')}`);
+  }
+  if (becameNotApplicable.length > 0) {
+    lines.push(`    ${dim('Now not applicable:')} ${becameNotApplicable.map((c) => c.id).join(', ')}`);
+  }
+  if (
+    gained.length === 0 &&
+    lost.length === 0 &&
+    becameApplicable.length === 0 &&
+    becameNotApplicable.length === 0 &&
+    diff.dimensions.every((d) => d.delta === 0)
+  ) {
     lines.push(dim('    No change.'));
   }
   lines.push('');
@@ -94,6 +109,10 @@ function renderIncompleteReasons(report: Report, scope: 'maturity' | 'effective'
   );
 }
 
+function notApplicableChecks(checks: CheckResult[]): CheckResult[] {
+  return checks.filter((check) => check.applicable === false && check.severity !== 'off');
+}
+
 function formatScopes(scopes: string[]): string {
   return scopes.join(', ');
 }
@@ -107,10 +126,23 @@ export function renderTerminal(report: Report, diff?: ReportDiff | null): string
   lines.push('');
   lines.push(bold(`  harness-score v${report.tool.version}`) + dim(`  ${report.root}`));
   lines.push('');
+  if (!maturityComplete) {
+    lines.push(
+      yellow(
+        `  ${WARN} Maturity scan incomplete ${MIDDOT} provisional maturity results are not authoritative.`,
+      ),
+    );
+    lines.push(...renderIncompleteReasons(report, 'maturity'));
+  }
+  if (showEffective && !effectiveComplete) {
+    lines.push(
+      yellow(
+        `  ${WARN} Effective scan incomplete ${MIDDOT} provisional effective results are not authoritative.`,
+      ),
+    );
+    lines.push(...renderIncompleteReasons(report, 'effective'));
+  }
   if (!maturityComplete || (showEffective && !effectiveComplete)) {
-    lines.push(yellow(`  ${WARN} Incomplete scan ${MIDDOT} provisional results are not authoritative.`));
-    if (!maturityComplete) lines.push(...renderIncompleteReasons(report, 'maturity'));
-    if (showEffective && !effectiveComplete) lines.push(...renderIncompleteReasons(report, 'effective'));
     lines.push('');
   }
   if (maturityComplete) {
@@ -171,7 +203,8 @@ export function renderTerminal(report: Report, diff?: ReportDiff | null): string
   }
   lines.push('');
 
-  const failed = report.checks.filter((c) => !c.passed && c.severity !== 'off');
+  const failed = report.checks.filter((c) => !c.passed && checkIsScored(c));
+  const notApplicable = notApplicableChecks(report.checks);
   if (failed.length === 0) {
     lines.push(
       maturityComplete
@@ -185,6 +218,14 @@ export function renderTerminal(report: Report, diff?: ReportDiff | null): string
       lines.push(`     ${check.remediation}`);
       lines.push(`     ${dim(check.evidence)}`);
       lines.push(`     ${cyan(check.docsUrl)}`);
+    }
+  }
+  if (notApplicable.length > 0) {
+    lines.push('');
+    lines.push(dim(`  Not applicable (${notApplicable.length}):`));
+    for (const check of notApplicable) {
+      lines.push(`   ${dim(MIDDOT)} ${bold(check.id)} ${check.title}`);
+      lines.push(`     ${dim(check.evidence)}`);
     }
   }
   const warningKeys = new Set<string>();

@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import type { ScanContext } from '../types.js';
 import { compareLexically } from '../util.js';
+import { pluginLayoutAtScanRoot, pluginLayoutToolId, pluginPhysicalToCanonical } from './plugins.js';
 
 /** Stable tool identifiers surfaced in scan reports. */
 export type ToolId =
@@ -10,6 +11,7 @@ export type ToolId =
   | 'continue'
   | 'copilot'
   | 'claude-code'
+  | 'devin'
   | 'codex'
   | 'opencode'
   | 'antigravity'
@@ -25,6 +27,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolId, string> = {
   continue: 'Continue',
   copilot: 'GitHub Copilot',
   'claude-code': 'Claude Code',
+  devin: 'Devin',
   codex: 'Codex',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
@@ -80,11 +83,30 @@ export function matchPathSpec(ctx: ScanContext, spec: PathSpec): PathSpecMatch[]
     }
   }
 
+  const pluginLayout = pluginLayoutAtScanRoot(ctx);
+  if (pluginLayout && spec.toolId === pluginLayoutToolId(pluginLayout)) {
+    const hasSkillsDir = ctx.files.some((file) => file === 'skills' || file.startsWith('skills/'));
+    for (const file of ctx.files) {
+      const canonicalPath = pluginPhysicalToCanonical(file, pluginLayout, hasSkillsDir);
+      if (!canonicalPath || !spec.pathRegex.test(canonicalPath)) continue;
+      matches.set(file, { path: file, canonicalPath, nativeDepth: 0 });
+    }
+  }
+
   return [...matches.values()].sort((a, b) => compareLexically(a.path, b.path));
 }
 
-/** Root context files checked by CTX-01/02. Order is preference for evidence only. */
-export const CONTEXT_ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'] as const;
+/** Project guide paths checked by CTX-01/02. Order is preference for evidence only. */
+export const CONTEXT_ROOT_FILES = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  'GEMINI.md',
+  '.claude/CLAUDE.md',
+  '.claude/AGENTS.md',
+] as const;
+
+/** Claude Code session-start instructions — never CTX-03..06 rule artifacts. */
+export const CLAUDE_PROJECT_GUIDE_PATHS = new Set<string>(['.claude/CLAUDE.md', '.claude/AGENTS.md']);
 
 export const PATH_SPECS: PathSpec[] = [
   // Rules
@@ -136,6 +158,12 @@ export const PATH_SPECS: PathSpec[] = [
     pathRegex: /(^|\/)\.gemini\/rules\/[^/]+$/,
     nativeRoot: '.gemini',
   },
+  {
+    toolId: 'claude-code',
+    kind: 'rules',
+    pathRegex: /(^|\/)\.claude\/rules\/.+\.md$/,
+    nativeRoot: '.claude',
+  },
   // Nested context files (root ones are CTX-01's job) — directory-scoped
   // guidance loaded automatically by Codex/Cursor (AGENTS.md), Claude Code
   // (CLAUDE.md), and Gemini/Antigravity (GEMINI.md).
@@ -155,6 +183,12 @@ export const PATH_SPECS: PathSpec[] = [
     kind: 'skills',
     pathRegex: /(^|\/)\.claude\/skills\/[^/]+\/SKILL\.md$/,
     nativeRoot: '.claude',
+  },
+  {
+    toolId: 'devin',
+    kind: 'skills',
+    pathRegex: /(^|\/)\.devin\/skills\/[^/]+\/SKILL\.md$/,
+    nativeRoot: '.devin',
   },
   {
     toolId: 'codex',
@@ -245,6 +279,18 @@ export const PATH_SPECS: PathSpec[] = [
     kind: 'hooks',
     pathRegex: /(^|\/)\.claude\/settings\.json$/,
     nativeRoot: '.claude',
+  },
+  {
+    toolId: 'devin',
+    kind: 'hooks',
+    pathRegex: /(^|\/)\.devin\/hooks\.v1\.json$/,
+    nativeRoot: '.devin',
+  },
+  {
+    toolId: 'devin',
+    kind: 'hooks',
+    pathRegex: /(^|\/)\.devin\/config\.json$/,
+    nativeRoot: '.devin',
   },
 
   // MCP

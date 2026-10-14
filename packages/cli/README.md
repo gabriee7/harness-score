@@ -17,6 +17,14 @@ The scan reads your filesystem and parses config — that's it. No network
 calls, no telemetry, no model in the loop. Same repo in, same score out,
 every time.
 
+Repository discovery walks the complete relevant filesystem tree without a
+production depth cap, including tracked, untracked, and ignored files. Known
+dependency and generated directories are skipped, followed symlink targets
+must remain inside the scan root, and file bodies above 512 KiB are not read. A
+1,000,000-file emergency fuse protects against pathological trees; reaching it,
+finding an out-of-root symlink, or encountering an unreadable relevant path
+marks the affected snapshot as incomplete instead of authoritative.
+
 Full maturity model, check catalog, and remediation guide:
 **[paladini.github.io/harness-score](https://paladini.github.io/harness-score/)**
 
@@ -83,6 +91,12 @@ project before each release.
 ```yaml
 - run: npx harness-score --min-level 3
 ```
+
+The exit status follows the snapshot selected by `--gate`. An incomplete gated
+snapshot exits 2. If `maturity` is complete and only an additional `effective`
+scope is incomplete, `--gate maturity` can still pass and reports the effective
+snapshot as unavailable. JSON output keeps incomplete values for diagnosis and
+marks their authority through `verdicts`.
 
 Or use the [packaged GitHub Action](https://github.com/paladini/harness-score/tree/main/action),
 which also emits the badge.

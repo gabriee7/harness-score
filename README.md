@@ -28,7 +28,7 @@ wildly different results, because one has a harness that catches mistakes
 before they ship and the other has none.
 
 **Harness Score measures that harness — across any tool.** Point it at any
-repository using Cursor, Claude Code, Windsurf, Cline, Continue, or any other
+repository using Cursor, Claude Code, Devin, Windsurf, Cline, Continue, or any other
 AI coding tool, and get a maturity level (L0–L4), a 108-point breakdown across
 six dimensions, and the precise, ranked list of what to fix next — with zero
 LLM calls, zero network access, and the same result every time you run it.
@@ -124,6 +124,21 @@ Honesty about the limits of a deterministic scanner:
 A high score means the *infrastructure* for reliable agent work exists. It's
 necessary, not sufficient — and that's the honest ceiling of what any
 deterministic scanner can claim.
+
+The repository scan walks the complete relevant filesystem tree, including
+tracked, untracked, and ignored files. It skips known dependency and generated
+directories, keeps followed symlink targets inside the scan root, and never
+reads file bodies larger than 512 KiB. An emergency fuse stops pathological
+trees above 1,000,000 files; hitting that fuse, finding an out-of-root symlink,
+or encountering an unreadable relevant path marks the affected snapshot as
+incomplete instead of publishing its score as authoritative.
+
+Repositories using [Devbox](https://www.jetify.com/docs/devbox) are supported:
+the scanner skips Devbox's generated `.devbox/` directory, including its
+`.devbox/bin/devbox` symlink and generated virtual-environment state. Project
+configuration such as `devbox.json`, `devbox.lock`, and `devbox.d/` remains
+visible to the scan. Devbox is an environment manager, not a detected AI
+harness, so it does not add maturity points or appear in `detectedHarnesses`.
 
 ## Stability & versioning
 

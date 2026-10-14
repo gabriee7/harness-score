@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Harness Score
   text: Quão bem preparado está o seu repositório?
-  tagline: Um comando determinístico mede o harness de código com IA — funciona com Cursor, Claude Code, Windsurf e outras ferramentas. Escaneia AGENTS.md, rules, hooks, testes, CI. Sem IA no scan. Sem rede. Mesma pontuação sempre.
+  tagline: Um comando determinístico mede o harness de código com IA — funciona com Cursor, Claude Code, Devin, Windsurf e outras ferramentas. Escaneia AGENTS.md, rules, hooks, testes, CI. Sem IA no scan. Sem rede. Mesma pontuação sempre.
   image:
     src: /logo.svg
     alt: Harness Score

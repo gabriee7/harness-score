@@ -29,6 +29,7 @@ const SKIP_DIRS = new Set([
   '.pytest_cache',
   '.mypy_cache',
   '.ruff_cache',
+  '.devbox',
 ]);
 
 /**
@@ -38,8 +39,8 @@ const SKIP_DIRS = new Set([
  */
 const SKIP_RELATIVE_PATHS = new Set(['.yarn/cache', '.yarn/unplugged', '.yarn/install-state.gz']);
 
-const MAX_DEPTH = 10;
-const MAX_FILES = 20000;
+/** Emergency fuse against pathological repositories; normal scans should complete well below it. */
+const MAX_FILES = 1_000_000;
 /** Never read file bodies larger than this (binary/artifact protection). */
 const MAX_READ_BYTES = 512 * 1024;
 
@@ -67,6 +68,14 @@ interface WalkOptions {
   maxDepth?: number;
   maxFiles?: number;
   readDirectory?: (directory: string) => fs.Dirent[];
+  statPath?: (path: string) => fs.Stats;
+}
+
+interface PendingDirectory {
+  abs: string;
+  rel: string;
+  depth: number;
+  real: string;
 }
 
 export interface WalkResult {
@@ -79,19 +88,40 @@ function addFirstReason(reasons: ScanIncompleteReason[], reason: ScanIncompleteR
   if (!reasons.some((existing) => existing.code === reason.code)) reasons.push(reason);
 }
 
-/** Internal/testable deterministic filesystem walker. Production callers use fixed limits. */
+function isMissingOrBrokenSymlink(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'ELOOP';
+}
+
+function isInsideRoot(rootReal: string, targetReal: string): boolean {
+  const relative = path.relative(rootReal, targetReal);
+  return (
+    relative === '' ||
+    (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`))
+  );
+}
+
+/** Internal/testable deterministic filesystem walker. `maxDepth` is a test seam only. */
 export function walkDirectory(root: string, options: WalkOptions = {}): WalkResult {
-  const maxDepth = options.maxDepth ?? MAX_DEPTH;
+  const maxDepth = options.maxDepth;
   const maxFiles = options.maxFiles ?? MAX_FILES;
   const readDirectory =
     options.readDirectory ?? ((directory: string) => fs.readdirSync(directory, { withFileTypes: true }));
+  const statPath = options.statPath ?? fs.statSync;
   const files: string[] = [];
   const incompleteReasons: ScanIncompleteReason[] = [];
-  const visitedRealDirs = new Set<string>([safeRealpath(root) ?? root]);
-  const stack: Array<{ abs: string; rel: string; depth: number }> = [{ abs: root, rel: '', depth: 0 }];
+  const rootReal = safeRealpath(root) ?? path.resolve(root);
+  const visitedRealDirs = new Set<string>();
+  const stack: PendingDirectory[] = [{ abs: root, rel: '', depth: 0, real: rootReal }];
+  const deferredSymlinkDirs: PendingDirectory[] = [];
 
-  while (stack.length > 0) {
-    const dir = stack.pop()!;
+  while (stack.length > 0 || deferredSymlinkDirs.length > 0) {
+    // Exhaust physical directories before aliases so a lexically earlier
+    // symlink cannot hide the canonical repository path for the same target.
+    const dir = stack.pop() ?? deferredSymlinkDirs.pop()!;
+    if (visitedRealDirs.has(dir.real)) continue;
+    visitedRealDirs.add(dir.real);
+
     let entries: fs.Dirent[];
     try {
       entries = readDirectory(dir.abs);
@@ -103,39 +133,57 @@ export function walkDirectory(root: string, options: WalkOptions = {}): WalkResu
       continue;
     }
     entries.sort((a, b) => compareLexically(a.name, b.name));
-    const childDirs: Array<{ abs: string; rel: string; depth: number }> = [];
+    const childDirs: PendingDirectory[] = [];
+    const childSymlinkDirs: PendingDirectory[] = [];
     for (const entry of entries) {
       const rel = dir.rel === '' ? entry.name : `${dir.rel}/${entry.name}`;
-      if (SKIP_RELATIVE_PATHS.has(rel)) continue;
+      if (
+        SKIP_RELATIVE_PATHS.has(rel) ||
+        (SKIP_DIRS.has(entry.name) && (entry.isDirectory() || entry.isSymbolicLink()))
+      ) {
+        continue;
+      }
 
       const abs = path.join(dir.abs, entry.name);
       let isDir = entry.isDirectory();
       let isFile = entry.isFile();
+      let symlinkReal: string | null = null;
 
       if (entry.isSymbolicLink()) {
         let stat: fs.Stats;
         try {
-          stat = fs.statSync(abs); // follows the symlink, unlike lstatSync
-        } catch {
-          continue; // broken symlink target
+          stat = statPath(abs); // follows the symlink, unlike lstatSync
+        } catch (error) {
+          if (!isMissingOrBrokenSymlink(error)) {
+            addFirstReason(incompleteReasons, { code: 'unreadable-path', path: rel });
+          }
+          continue;
+        }
+        symlinkReal = safeRealpath(abs);
+        if (symlinkReal === null) {
+          addFirstReason(incompleteReasons, { code: 'unreadable-path', path: rel });
+          continue;
+        }
+        if (!isInsideRoot(rootReal, symlinkReal)) {
+          addFirstReason(incompleteReasons, { code: 'outside-root-symlink', path: rel });
+          continue;
         }
         isDir = stat.isDirectory();
         isFile = stat.isFile();
       }
 
       if (isDir) {
-        if (SKIP_DIRS.has(entry.name)) continue;
-        if (dir.depth >= maxDepth) {
+        if (maxDepth !== undefined && dir.depth >= maxDepth) {
           addFirstReason(incompleteReasons, { code: 'depth-limit', path: rel, limit: maxDepth });
           continue;
         }
-        // Dedup by real path so symlink cycles (and hardlink-style repeats)
-        // can't loop forever; readdirSync/statSync below still follow the
-        // symlink transparently via its own (non-resolved) `abs` path.
-        const real = safeRealpath(abs) ?? abs;
-        if (visitedRealDirs.has(real)) continue;
-        visitedRealDirs.add(real);
-        childDirs.push({ abs, rel, depth: dir.depth + 1 });
+        const real = symlinkReal ?? safeRealpath(abs) ?? abs;
+        const child = { abs, rel, depth: dir.depth + 1, real };
+        if (entry.isSymbolicLink()) {
+          childSymlinkDirs.push(child);
+        } else {
+          childDirs.push(child);
+        }
       } else if (isFile) {
         if (files.length >= maxFiles) {
           addFirstReason(incompleteReasons, {
@@ -150,6 +198,9 @@ export function walkDirectory(root: string, options: WalkOptions = {}): WalkResu
       }
     }
     for (let i = childDirs.length - 1; i >= 0; i -= 1) stack.push(childDirs[i]!);
+    for (let i = childSymlinkDirs.length - 1; i >= 0; i -= 1) {
+      deferredSymlinkDirs.push(childSymlinkDirs[i]!);
+    }
   }
   files.sort(compareLexically);
   return { files, truncated: incompleteReasons.length > 0, incompleteReasons };
@@ -172,6 +223,7 @@ function buildContext(
   repoFiles: string[],
   incompleteReasons: ScanIncompleteReason[],
   overlayAbsByRel: Map<string, string>,
+  overlayLabelByRel: Map<string, string>,
 ): ScanContext {
   const repoSet = new Set(repoFiles);
   const fileSet = new Set(repoFiles);
@@ -185,7 +237,9 @@ function buildContext(
   return {
     root,
     files,
-    truncated: incompleteReasons.length > 0,
+    get truncated(): boolean {
+      return incompleteReasons.length > 0;
+    },
     incompleteReasons,
     has(relPath: string): boolean {
       return fileSet.has(relPath);
@@ -207,6 +261,12 @@ function buildContext(
           }
         } catch {
           content = null;
+          addFirstReason(incompleteReasons, {
+            code: 'unreadable-path',
+            path: repoSet.has(relPath)
+              ? relPath
+              : `${overlayLabelByRel.get(relPath) ?? 'overlay'}:${relPath}`,
+          });
         }
       }
       contentCache.set(relPath, content);
@@ -229,6 +289,7 @@ export function createScanContext(rootInput: string, options: CreateScanOptions 
   const overlays = options.overlays ?? [];
 
   const overlayAbsByRel = new Map<string, string>();
+  const overlayLabelByRel = new Map<string, string>();
   const effectiveReasons = normalizeReasons(repoTruncated, repoReasons);
   const repoSet = new Set(repoFiles);
 
@@ -242,12 +303,13 @@ export function createScanContext(rootInput: string, options: CreateScanOptions 
     for (const [rel, abs] of overlay.files) {
       if (repoSet.has(rel)) continue;
       overlayAbsByRel.set(rel, abs);
+      overlayLabelByRel.set(rel, overlay.label);
     }
   }
 
   if (overlays.length === 0) {
-    return buildContext(root, repoFiles, effectiveReasons, overlayAbsByRel);
+    return buildContext(root, repoFiles, effectiveReasons, overlayAbsByRel, overlayLabelByRel);
   }
 
-  return buildContext(root, repoFiles, effectiveReasons, overlayAbsByRel);
+  return buildContext(root, repoFiles, effectiveReasons, overlayAbsByRel, overlayLabelByRel);
 }

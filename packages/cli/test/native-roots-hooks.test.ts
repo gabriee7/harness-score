@@ -44,8 +44,10 @@ const canonicalExamples = [
   '.agents/rules/example',
   '.agent/rules/example',
   '.gemini/rules/example',
+  '.claude/rules/example.md',
   '.cursor/skills/example/SKILL.md',
   '.claude/skills/example/SKILL.md',
+  '.devin/skills/example/SKILL.md',
   '.agents/skills/example/SKILL.md',
   '.cursor/commands/example.md',
   '.claude/commands/example.md',
@@ -59,6 +61,8 @@ const canonicalExamples = [
   '.opencode/agents/example.md',
   '.cursor/hooks.json',
   '.claude/settings.json',
+  '.devin/hooks.v1.json',
+  '.devin/config.json',
   '.cursor/mcp.json',
   '.agents/mcp_config.json',
   '.agent/mcp_config.json',
@@ -69,6 +73,19 @@ function checkOutcomes(ctx: ScanContext, ids: string[]): Promise<boolean[]> {
 }
 
 describe('tool-native scan roots', () => {
+  test('collects repository Devin hooks from the canonical path', () => {
+    const ctx = fakeContext({ '.devin/hooks.v1.json': '{}' });
+    expect(collectHookConfigs(ctx)).toEqual([
+      {
+        path: '.devin/hooks.v1.json',
+        canonicalPath: '.devin/hooks.v1.json',
+        nativeDepth: 0,
+        toolId: 'devin',
+        kind: 'hooks',
+      },
+    ]);
+  });
+
   test.each(
     PATH_SPECS.filter((spec) => spec.nativeRoot),
   )('$toolId $kind recognizes its physical path when $nativeRoot is the scan root', (spec) => {
@@ -137,6 +154,59 @@ describe('tool-native scan roots', () => {
     expect(collectRules(ctx)[0]).toMatchObject({ path: 'rules/project.mdc' });
     expect(collectCommands(ctx)[0]).toMatchObject({ path: 'commands/review.md' });
     expect(collectMcpConfigs(ctx)[0]).toMatchObject({ path: 'mcp.json' });
+  });
+
+  test('reads and scores a physical Devin skill when .devin is the filesystem root', async () => {
+    const root = createNativeTree('.devin', {
+      'skills/review/SKILL.md':
+        '---\nname: review\ndescription: Use when reviewing changes with deterministic project checks.\n---',
+    });
+    const ctx = createScanContext(root);
+    expect(collectSkills(ctx)).toEqual([
+      {
+        path: 'skills/review/SKILL.md',
+        canonicalPath: '.devin/skills/review/SKILL.md',
+        nativeDepth: 0,
+        toolId: 'devin',
+        kind: 'skills',
+      },
+    ]);
+    expect(await checkOutcomes(ctx, ['SKL-01', 'SKL-02', 'SKL-03', 'SKL-04'])).toEqual([
+      true,
+      true,
+      false,
+      true,
+    ]);
+    expect(detectHarnesses(ctx)).toEqual(['devin']);
+  });
+
+  test('reads and scores physical Devin hooks when .devin is the filesystem root', async () => {
+    const hooks = JSON.stringify({
+      PreToolUse: [{ hooks: [{ type: 'command', command: 'python hooks/guard.py' }] }],
+      PostCompaction: [{ hooks: [{ type: 'prompt', prompt: 'Restore the task context.' }] }],
+    });
+    const root = createNativeTree('.devin', {
+      'hooks.v1.json': hooks,
+      'hooks/guard.py': '# present',
+    });
+    const ctx = createScanContext(root);
+    expect(collectHookConfigs(ctx)).toEqual([
+      {
+        path: 'hooks.v1.json',
+        canonicalPath: '.devin/hooks.v1.json',
+        nativeDepth: 0,
+        toolId: 'devin',
+        kind: 'hooks',
+      },
+    ]);
+    expect(await checkOutcomes(ctx, ['HKS-01', 'HKS-02', 'HKS-03', 'HKS-04', 'HKS-05'])).toEqual([
+      true,
+      true,
+      true,
+      false,
+      true,
+    ]);
+    expect(detectHarnesses(ctx)).toEqual(['devin']);
   });
 
   test('keeps skill, agent, hook, and harness detection outcomes invariant', async () => {
@@ -216,6 +286,21 @@ describe('deterministic hook normalization', () => {
     expect(normalized?.selectionWarnings.map((warning) => warning.source)).toEqual([
       '.claude/settings.json',
       'scratch/.claude/settings.json',
+    ]);
+  });
+
+  test('does not let an invalid Claude configuration shadow valid Devin hooks', () => {
+    const ctx = fakeContext({
+      '.claude/settings.json': JSON.stringify({ hooks: { PreToolUse: [{ hooks: [] }] } }),
+      '.devin/hooks.v1.json': JSON.stringify({
+        PreToolUse: [{ hooks: [{ type: 'command', command: 'echo valid' }] }],
+      }),
+    });
+    const normalized = readNormalizedHooks(ctx);
+    expect(normalized?.source).toBe('.devin/hooks.v1.json');
+    expect(normalized?.toolId).toBe('devin');
+    expect(normalized?.selectionWarnings).toEqual([
+      expect.objectContaining({ source: '.claude/settings.json', code: 'ignored-hook-config' }),
     ]);
   });
 

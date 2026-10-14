@@ -24,7 +24,14 @@ A per-run summary (level + dimension table) appears in the job summary. To
 publish the badge, upload it as an artifact or commit it to a `badges`
 branch, then reference it from your README:
 
-The Action fails closed when a requested filesystem scan is incomplete (file-count limit, depth limit, or unreadable directory). It exits before publishing level outputs, a badge, a Markdown report, a job summary, or a pull-request comment, even when `min-level` is `0`.
+The Action fails closed when the snapshot selected by `gate` is incomplete
+(file-count limit, depth limit, or unreadable relevant path such as an
+`unreadable-path` or `unreadable-directory`, plus out-of-root symlinks).
+Complete maturity
+outputs, badges, and reports remain authoritative when only an additional
+effective scope is incomplete. In that case, `gate: maturity` can pass with a
+warning, while `gate: effective` exits 2. Effective outputs remain empty until
+the effective snapshot is complete.
 
 Pin a full commit SHA instead of `v1` for maximum supply-chain stability. The legacy
 `paladini/harness-score/action@<ref>` entrypoint remains compatible, but the
@@ -45,6 +52,10 @@ new one each time.
 
 This is opt-in and requires the calling workflow to grant
 `pull-requests: write` — the action cannot request that permission for you:
+
+When `config` is set, the main scan, base-branch baseline, and current diff all
+use that same explicit configuration. Leave `config` empty to preserve config
+autodiscovery in each scanned tree.
 
 ```yaml
 on:
@@ -81,13 +92,19 @@ concurrency:
 
 | Input | Default | Description |
 |---|---|---|
-| `min-level` | `0` | Fail when maturity is below this level (0–4); incomplete scans always fail |
+| `min-level` | `0` | Fail when the complete gated score is below this level (0–4); an incomplete gated snapshot exits 2 |
 | `badge` | `harness-badge.svg` | SVG pill (`harness` + level); empty to skip |
 | `report` | _(empty)_ | Markdown report output path |
 | `working-directory` | `.` | Directory to scan |
-| `version` | `1.5.3` | harness-score npm version or package spec |
+| `version` | `1.8.2` | harness-score npm version or package spec |
 | `comment` | `false` | Post/update a sticky PR comment with the score delta (`pull_request` events only; requires `pull-requests: write`) |
+| `include-user-harness` | `false` | Include the user-level harness in the effective snapshot |
+| `include-system-harness` | `false` | Include the system-level harness in the effective snapshot |
+| `gate` | `maturity` | Select which snapshot `min-level` and incomplete-scan failures use |
+| `config` | _(empty)_ | Pass a specific scanner configuration file |
 
 ## Outputs
 
-`level` (0–4), `level-name`, `percent`.
+`level` (0–4), `level-name`, and `percent` describe maturity and are published
+only when maturity is complete. `effective-level` and `effective-percent` are
+published only when the effective snapshot is complete.

@@ -1,4 +1,8 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { createScanContext } from '../src/scan.js';
 import { buildReportFromScanContext, LEVEL_REQUIREMENTS, TOOL_VERSION } from '../src/score.js';
 import type { DimensionId, DimensionScore } from '../src/types.js';
 import { DIMENSIONS } from '../src/types.js';
@@ -116,5 +120,54 @@ describe('buildReport shape', () => {
       status: 'incomplete',
       reasons: [{ code: 'depth-limit', path: 'a/b', limit: 10 }],
     });
+  });
+
+  test('computes the verdict after checks request discovered file contents', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-score-score-'));
+    const agentsPath = path.join(root, 'AGENTS.md');
+    fs.writeFileSync(agentsPath, '# present during discovery');
+    const ctx = createScanContext(root);
+    fs.unlinkSync(agentsPath);
+
+    try {
+      const report = buildReportFromScanContext(ctx);
+      expect(report.truncated).toBe(true);
+      expect(report.verdicts?.maturity).toEqual({
+        status: 'incomplete',
+        reasons: [{ code: 'unreadable-path', path: 'AGENTS.md' }],
+      });
+      expect(report.verdicts?.effective).toEqual(report.verdicts?.maturity);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps oversized requested files complete because the read limit is intentional', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-score-score-'));
+    fs.writeFileSync(path.join(root, 'AGENTS.md'), 'a'.repeat(512 * 1024 + 1));
+
+    try {
+      const report = buildReportFromScanContext(createScanContext(root));
+      expect(report.truncated).toBe(false);
+      expect(report.verdicts?.maturity).toEqual({ status: 'complete', reasons: [] });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('does not fail closed for a discovered unreadable file that no check requests', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-score-score-'));
+    const unrelatedPath = path.join(root, 'unrelated.txt');
+    fs.writeFileSync(unrelatedPath, 'present during discovery');
+    const ctx = createScanContext(root);
+    fs.unlinkSync(unrelatedPath);
+
+    try {
+      const report = buildReportFromScanContext(ctx);
+      expect(report.truncated).toBe(false);
+      expect(report.verdicts?.maturity).toEqual({ status: 'complete', reasons: [] });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

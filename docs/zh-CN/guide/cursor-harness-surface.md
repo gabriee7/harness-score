@@ -135,6 +135,8 @@ by severity. Never modify code — that's the parent agent's job.
 
 Cursor 插件在可安装单元下打包 rules、skills、commands、hooks、agents 与 MCP 配置，附带 `.cursor-plugin/plugin.json` 清单，经 [Cursor Marketplace](https://cursor.com/marketplace) 分发。插件对 harness 工程很重要，因为它们使 harness 模式**可跨仓库复用** — 包括 [Harness Score 插件](./measure-and-improve#the-cursor-plugin)，它审计本章所述的工件（今日可从仓库目录安装；Marketplace 上架审核中）。
 
+扫描 **plugin 仓库**（manifest 在扫描根）时，`harness-score` 将默认 plugin 的 `skills/`、`commands/`、`agents/`、`hooks/hooks.json` 映射为与 `.cursor/...` 布局相同的 checks — 见 [第 8 章 — plugin 布局](./measure-and-improve#skl-01)。
+
 ## 选对机制
 
 | 你想… | 使用 |

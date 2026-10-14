@@ -85,7 +85,7 @@ Agent harness 有一种人类工作流没有的威胁：**藏在数据里的指�
 
 - [ ] `.gitignore` 覆盖 env files；tree 中无真实 secret
 - [ ] `mcp.json` 不含 literal credentials
-- [ ] `hooks.json` 配置至少一个 shell gate（destructive patterns → deny/ask）
+- [ ] 已识别的 hooks 配置（`.cursor/hooks.json`、Claude Code 的 `settings.json`、`.devin/hooks.v1.json` 或 `.devin/config.json` 的 `hooks` 键）并配置至少一个 gate（destructive patterns → deny/ask）
 - [ ] 一个 feedback hook（编辑时 format/lint）
 - [ ] Branch protection，并配置 required CI checks
 

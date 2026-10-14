@@ -16,12 +16,25 @@ function run(args: string[]) {
 
 function makeIncompleteRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-incomplete-'));
-  let nested = root;
-  for (let depth = 0; depth < 11; depth += 1) {
-    nested = path.join(nested, `d${depth}`);
-    fs.mkdirSync(nested);
+  const unreadable = path.join(root, 'unreadable');
+  fs.mkdirSync(unreadable);
+  if (process.platform === 'win32') {
+    const denied = spawnSync('icacls', [unreadable, '/deny', '*S-1-1-0:(RD)'], { encoding: 'utf8' });
+    if (denied.status !== 0) throw new Error(`Could not create unreadable fixture: ${denied.stderr}`);
+  } else {
+    fs.chmodSync(unreadable, 0o000);
   }
   return root;
+}
+
+function removeIncompleteRoot(root: string): void {
+  const unreadable = path.join(root, 'unreadable');
+  if (process.platform === 'win32') {
+    spawnSync('icacls', [unreadable, '/remove:d', '*S-1-1-0'], { encoding: 'utf8' });
+  } else {
+    fs.chmodSync(unreadable, 0o700);
+  }
+  fs.rmSync(root, { recursive: true, force: true });
 }
 
 describe('cli', () => {
@@ -43,6 +56,23 @@ describe('cli', () => {
     expect(result.status).toBe(0);
   });
 
+  test.each([
+    ['maturity', 'level-1', 3, 1],
+    ['maturity', 'level-4', 4, 0],
+    ['effective', 'level-1', 3, 1],
+    ['effective', 'level-4', 4, 0],
+  ] as const)('uses the %s snapshot for a complete --min-level gate', (gate, fixture, minLevel, status) => {
+    const result = run([
+      path.join(FIXTURES, fixture),
+      '--gate',
+      gate,
+      '--min-level',
+      String(minLevel),
+      '--quiet',
+    ]);
+    expect(result.status).toBe(status);
+  });
+
   test('--badge writes a valid SVG', () => {
     const badgePath = path.join(os.tmpdir(), `hs-badge-${process.pid}.svg`);
     const result = run([path.join(FIXTURES, 'level-3'), '--badge', badgePath, '--quiet']);
@@ -62,12 +92,12 @@ describe('cli', () => {
       const report = JSON.parse(result.stdout);
       expect(report.verdicts.maturity.status).toBe('incomplete');
       expect(report.verdicts.maturity.reasons[0]).toMatchObject({
-        code: 'depth-limit',
-        limit: 10,
+        code: 'unreadable-directory',
+        path: 'unreadable',
       });
-      expect(result.stderr).toContain('no authoritative verdict is available');
+      expect(result.stderr).toContain('no authoritative maturity verdict is available');
     } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+      removeIncompleteRoot(root);
     }
   });
 
@@ -81,29 +111,50 @@ describe('cli', () => {
       expect(svg).toContain('>incomplete<');
       expect(svg).not.toMatch(/>L[0-4]</);
     } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+      removeIncompleteRoot(root);
       fs.rmSync(badgePath, { force: true });
     }
   });
 
-  test('exits 2 when only a requested effective scope is incomplete', () => {
+  test.each([
+    ['maturity', 0, 0],
+    ['maturity', 4, 1],
+    ['effective', 0, 2],
+  ] as const)('gate %s with --min-level L%i returns %i when only effective is incomplete', (gate, minLevel, expectedStatus) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-effective-root-'));
     const shared = makeIncompleteRoot();
     fs.writeFileSync(
       path.join(root, '.harness-score.json'),
-      JSON.stringify({ extraRoots: [{ id: 'team', path: shared }], gate: 'maturity' }),
+      JSON.stringify({ extraRoots: [{ id: 'team', path: shared }], gate }),
       'utf8',
     );
     try {
-      const result = run([root, '--json', '--quiet', '--min-level', '0']);
-      expect(result.status).toBe(2);
+      const result = run([root, '--json', '--quiet', '--min-level', String(minLevel)]);
+      expect(result.status).toBe(expectedStatus);
       const report = JSON.parse(result.stdout);
       expect(report.verdicts.maturity.status).toBe('complete');
       expect(report.verdicts.effective.status).toBe('incomplete');
       expect(result.stderr).toContain('effective scan is incomplete');
+      if (expectedStatus === 1) expect(result.stderr).toContain('maturity L0 is below required L4');
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
-      fs.rmSync(shared, { recursive: true, force: true });
+      removeIncompleteRoot(shared);
+    }
+  });
+
+  test.each([
+    'maturity',
+    'effective',
+  ] as const)('exits 2 with gate %s when maturity is incomplete', (gate) => {
+    const root = makeIncompleteRoot();
+    try {
+      const result = run([root, '--json', '--quiet', '--gate', gate, '--min-level', '0']);
+      expect(result.status).toBe(2);
+      const report = JSON.parse(result.stdout);
+      expect(report.verdicts.maturity.status).toBe('incomplete');
+      expect(report.verdicts.effective.status).toBe('incomplete');
+    } finally {
+      removeIncompleteRoot(root);
     }
   });
 
@@ -181,7 +232,7 @@ describe('cli', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('current maturity report is incomplete');
     } finally {
-      fs.rmSync(root, { recursive: true, force: true });
+      removeIncompleteRoot(root);
       fs.rmSync(baselinePath, { force: true });
     }
   });

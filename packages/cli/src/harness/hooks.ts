@@ -88,6 +88,23 @@ const CLAUDE_FEEDBACK_EVENTS = new Set([
 ]);
 const CLAUDE_HANDLER_TYPES = new Set(['command', 'http', 'mcp_tool', 'prompt', 'agent']);
 
+const DEVIN_KNOWN_EVENTS = new Set([
+  'PreToolUse',
+  'PostToolUse',
+  'PermissionRequest',
+  'UserPromptSubmit',
+  'Stop',
+  'PostCompaction',
+  'SessionStart',
+  'SessionEnd',
+]);
+const DEVIN_GATE_EVENTS = new Set(['PreToolUse', 'PermissionRequest']);
+const DEVIN_FEEDBACK_EVENTS = new Set(['PostToolUse', 'Stop']);
+const DEVIN_HANDLER_TYPES = new Set(['command', 'prompt']);
+
+type HookToolId = HarnessArtifact['toolId'];
+type VersionRequirement = 'present' | 'not-required' | 'missing';
+
 export interface HookCommandInvocation {
   command: string;
   args: string[];
@@ -97,9 +114,9 @@ export interface NormalizedHooks {
   source: string;
   canonicalSource: string;
   nativeDepth: number;
-  toolId: 'cursor' | 'claude-code';
-  hasHooksObject: boolean;
-  hasVersion: boolean;
+  toolId: HookToolId;
+  hasEventMap: boolean;
+  versionRequirement: VersionRequirement;
   events: string[];
   gateEvents: string[];
   feedbackEvents: string[];
@@ -128,8 +145,8 @@ function unknownEventWarnings(source: string, events: string[], knownEvents: Set
 
 function baseNormalized(
   artifact: HarnessArtifact,
-  toolId: 'cursor' | 'claude-code',
-): Omit<NormalizedHooks, 'hasHooksObject' | 'hasVersion' | 'events' | 'gateEvents' | 'feedbackEvents'> {
+  toolId: HookToolId,
+): Omit<NormalizedHooks, 'hasEventMap' | 'versionRequirement' | 'events' | 'gateEvents' | 'feedbackEvents'> {
   return {
     source: artifact.path,
     canonicalSource: artifact.canonicalPath,
@@ -148,19 +165,19 @@ function normalizeCursor(artifact: HarnessArtifact, content: string): Normalized
   if (parsed === null || typeof parsed !== 'object') return null;
   const config = parsed as Record<string, unknown>;
   const hooks = config.hooks;
-  const hasHooksObject = hooks !== null && typeof hooks === 'object' && !Array.isArray(hooks);
-  const events = hasHooksObject ? Object.keys(hooks as Record<string, unknown>) : [];
+  const hasEventMap = hooks !== null && typeof hooks === 'object' && !Array.isArray(hooks);
+  const events = hasEventMap ? Object.keys(hooks as Record<string, unknown>) : [];
   const normalized: NormalizedHooks = {
     ...baseNormalized(artifact, 'cursor'),
-    hasHooksObject,
-    hasVersion: config.version !== undefined,
+    hasEventMap,
+    versionRequirement: config.version === undefined ? 'missing' : 'present',
     events,
     gateEvents: events.filter((event) => CURSOR_GATE_EVENTS.has(event)),
     feedbackEvents: events.filter((event) => CURSOR_FEEDBACK_EVENTS.has(event)),
     eventWarnings: unknownEventWarnings(artifact.path, events, CURSOR_KNOWN_EVENTS),
   };
 
-  if (!hasHooksObject) {
+  if (!hasEventMap) {
     normalized.structuralErrors.push('hooks must be an object.');
     return normalized;
   }
@@ -229,70 +246,167 @@ function validateClaudeHandler(
   normalized.handlerCount += 1;
 }
 
+function validateMatcherGroups(
+  event: string,
+  groups: unknown,
+  normalized: NormalizedHooks,
+  validateHandler: (event: string, value: Record<string, unknown>, normalized: NormalizedHooks) => void,
+): void {
+  const eventName = event || '<empty>';
+  if (!Array.isArray(groups) || groups.length === 0) {
+    normalized.structuralErrors.push(`${eventName} matcher groups must be a non-empty array.`);
+    return;
+  }
+  for (const group of groups) {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) {
+      normalized.structuralErrors.push(`${eventName} contains a non-object matcher group.`);
+      continue;
+    }
+    const handlers = (group as Record<string, unknown>).hooks;
+    if (!Array.isArray(handlers) || handlers.length === 0) {
+      normalized.structuralErrors.push(`${eventName} matcher group must contain a non-empty hooks array.`);
+      continue;
+    }
+    for (const handler of handlers) {
+      if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
+        normalized.structuralErrors.push(`${eventName} contains a non-object handler.`);
+        continue;
+      }
+      validateHandler(eventName, handler as Record<string, unknown>, normalized);
+    }
+  }
+}
+
 function normalizeClaude(artifact: HarnessArtifact, content: string): NormalizedHooks | null {
   const parsed = safeJsonParse(content);
   if (parsed === null || typeof parsed !== 'object') return null;
   const settings = parsed as Record<string, unknown>;
   const hooks = settings.hooks;
-  const hasHooksObject = hooks !== null && typeof hooks === 'object' && !Array.isArray(hooks);
-  const events = hasHooksObject ? Object.keys(hooks as Record<string, unknown>) : [];
+  const hasEventMap = hooks !== null && typeof hooks === 'object' && !Array.isArray(hooks);
+  const events = hasEventMap ? Object.keys(hooks as Record<string, unknown>) : [];
   const normalized: NormalizedHooks = {
     ...baseNormalized(artifact, 'claude-code'),
-    hasHooksObject,
-    hasVersion: true,
+    hasEventMap,
+    versionRequirement: 'not-required',
     events,
     gateEvents: events.filter((event) => CLAUDE_GATE_EVENTS.has(event)),
     feedbackEvents: events.filter((event) => CLAUDE_FEEDBACK_EVENTS.has(event)),
     eventWarnings: unknownEventWarnings(artifact.path, events, CLAUDE_KNOWN_EVENTS),
   };
 
-  if (!hasHooksObject) {
+  if (!hasEventMap) {
     normalized.structuralErrors.push('hooks must be an object.');
     return normalized;
   }
 
   for (const [event, groups] of Object.entries(hooks as Record<string, unknown>)) {
     if (event.length === 0) normalized.structuralErrors.push('Hook event names must not be empty.');
-    if (!Array.isArray(groups) || groups.length === 0) {
-      normalized.structuralErrors.push(`${event || '<empty>'} matcher groups must be a non-empty array.`);
-      continue;
-    }
-    for (const group of groups) {
-      if (!group || typeof group !== 'object' || Array.isArray(group)) {
-        normalized.structuralErrors.push(`${event || '<empty>'} contains a non-object matcher group.`);
-        continue;
-      }
-      const handlers = (group as Record<string, unknown>).hooks;
-      if (!Array.isArray(handlers) || handlers.length === 0) {
-        normalized.structuralErrors.push(
-          `${event || '<empty>'} matcher group must contain a non-empty hooks array.`,
-        );
-        continue;
-      }
-      for (const handler of handlers) {
-        if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
-          normalized.structuralErrors.push(`${event || '<empty>'} contains a non-object handler.`);
-          continue;
-        }
-        validateClaudeHandler(event || '<empty>', handler as Record<string, unknown>, normalized);
-      }
-    }
+    validateMatcherGroups(event, groups, normalized, validateClaudeHandler);
   }
   return normalized;
+}
+
+function validateDevinHandler(
+  event: string,
+  value: Record<string, unknown>,
+  normalized: NormalizedHooks,
+): void {
+  if (typeof value.type !== 'string' || !DEVIN_HANDLER_TYPES.has(value.type)) {
+    normalized.structuralErrors.push(`${event} contains a handler with an unknown or missing type.`);
+    return;
+  }
+  if (value.type === 'command') {
+    if (typeof value.command !== 'string' || value.command.trim().length === 0) {
+      normalized.structuralErrors.push(`${event} contains an invalid command handler.`);
+      return;
+    }
+    normalized.commands.push({ command: value.command, args: [] });
+  } else if (typeof value.prompt !== 'string' || value.prompt.trim().length === 0) {
+    normalized.structuralErrors.push(`${event} contains a prompt handler without a prompt.`);
+    return;
+  }
+  normalized.handlerCount += 1;
+}
+
+function normalizeDevinEventMap(
+  artifact: HarnessArtifact,
+  hooks: Record<string, unknown>,
+  hasEventMap: boolean,
+): NormalizedHooks {
+  const events = hasEventMap ? Object.keys(hooks) : [];
+  const normalized: NormalizedHooks = {
+    ...baseNormalized(artifact, 'devin'),
+    hasEventMap,
+    versionRequirement: 'not-required',
+    events,
+    gateEvents: events.filter((event) => DEVIN_GATE_EVENTS.has(event)),
+    feedbackEvents: events.filter((event) => DEVIN_FEEDBACK_EVENTS.has(event)),
+    eventWarnings: unknownEventWarnings(artifact.path, events, DEVIN_KNOWN_EVENTS),
+  };
+  if (!hasEventMap) {
+    normalized.structuralErrors.push('The root value must be an event map object.');
+    return normalized;
+  }
+  for (const [event, groups] of Object.entries(hooks)) {
+    if (event.length === 0) normalized.structuralErrors.push('Hook event names must not be empty.');
+    validateMatcherGroups(event, groups, normalized, validateDevinHandler);
+  }
+  return normalized;
+}
+
+function normalizeDevinStandalone(artifact: HarnessArtifact, content: string): NormalizedHooks | null {
+  const parsed = safeJsonParse(content);
+  if (parsed === undefined) return null;
+  const hasEventMap = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
+  const hooks = hasEventMap ? (parsed as Record<string, unknown>) : {};
+  return normalizeDevinEventMap(artifact, hooks, hasEventMap);
+}
+
+function normalizeDevinConfig(artifact: HarnessArtifact, content: string): NormalizedHooks | null {
+  const parsed = safeJsonParse(content);
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const config = parsed as Record<string, unknown>;
+  const hooks = config.hooks;
+  const hasEventMap = hooks !== null && typeof hooks === 'object' && !Array.isArray(hooks);
+  if (!hasEventMap) {
+    const normalized: NormalizedHooks = {
+      ...baseNormalized(artifact, 'devin'),
+      hasEventMap: false,
+      versionRequirement: 'not-required',
+      events: [],
+      gateEvents: [],
+      feedbackEvents: [],
+      eventWarnings: [],
+    };
+    normalized.structuralErrors.push('hooks must be an object.');
+    return normalized;
+  }
+  return normalizeDevinEventMap(artifact, hooks as Record<string, unknown>, true);
+}
+
+function isDevinConfigJson(artifact: HarnessArtifact): boolean {
+  return (
+    artifact.canonicalPath.endsWith('/.devin/config.json') || artifact.canonicalPath === '.devin/config.json'
+  );
 }
 
 function normalizeArtifact(artifact: HarnessArtifact, content: string): NormalizedHooks | null {
   if (artifact.toolId === 'cursor') return normalizeCursor(artifact, content);
   if (artifact.toolId === 'claude-code') return normalizeClaude(artifact, content);
+  if (artifact.toolId === 'devin') {
+    return isDevinConfigJson(artifact)
+      ? normalizeDevinConfig(artifact, content)
+      : normalizeDevinStandalone(artifact, content);
+  }
   return null;
 }
 
 function unusableArtifact(artifact: HarnessArtifact, problem: string): NormalizedHooks {
-  const toolId = artifact.toolId === 'cursor' ? 'cursor' : 'claude-code';
   return {
-    ...baseNormalized(artifact, toolId),
-    hasHooksObject: false,
-    hasVersion: false,
+    ...baseNormalized(artifact, artifact.toolId),
+    hasEventMap: false,
+    versionRequirement:
+      artifact.toolId === 'claude-code' || artifact.toolId === 'devin' ? 'not-required' : 'missing',
     events: [],
     gateEvents: [],
     feedbackEvents: [],
@@ -302,8 +416,8 @@ function unusableArtifact(artifact: HarnessArtifact, problem: string): Normalize
 
 function isValidCandidate(candidate: NormalizedHooks): boolean {
   return (
-    candidate.hasHooksObject &&
-    candidate.hasVersion &&
+    candidate.hasEventMap &&
+    candidate.versionRequirement !== 'missing' &&
     candidate.events.length > 0 &&
     candidate.structuralErrors.length === 0
   );
@@ -365,9 +479,29 @@ function shellTokens(value: string): string[] {
   return value.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
 }
 
-function invocationTokens(invocation: HookCommandInvocation): string[] {
-  if (invocation.args.length === 0) return shellTokens(invocation.command);
-  return [invocation.command, ...invocation.args.flatMap(shellTokens)];
+function extractCanonicalDevinJoins(value: string): { paths: string[]; remainder: string } {
+  const pattern =
+    /(^|[^\w.])os\.path\.join\(\s*os\.environ\[\s*(['"])DEVIN_PROJECT_DIR\2\s*\]((?:\s*,\s*(?:"[^"]*"|'[^']*'))+)\s*\)(?=$|[^\w.])/g;
+  const paths: string[] = [];
+  for (const match of value.matchAll(pattern)) {
+    const literalArguments = match[3] ?? '';
+    const segments = [...literalArguments.matchAll(/,\s*(?:"([^"]*)"|'([^']*)')/g)].map(
+      (segment) => segment[1] ?? segment[2] ?? '',
+    );
+    paths.push(`./${segments.join('/')}`);
+  }
+  return { paths, remainder: value.replace(pattern, '$1') };
+}
+
+function invocationPathValues(invocation: HookCommandInvocation): string[] {
+  const command = extractCanonicalDevinJoins(invocation.command);
+  const args = invocation.args.map(extractCanonicalDevinJoins);
+  const literals = [...command.paths, ...args.flatMap((value) => value.paths)];
+  const tokens =
+    invocation.args.length === 0
+      ? shellTokens(command.remainder)
+      : [command.remainder, ...args.flatMap((value) => shellTokens(value.remainder))];
+  return [...literals, ...tokens.filter((token) => token.trim().length > 0)];
 }
 
 function pathValue(token: string): string {
@@ -379,13 +513,15 @@ function pathValue(token: string): string {
 function isRepositoryPath(token: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(token)) return false;
   if (/^[A-Za-z]:\//.test(token) || token.startsWith('/')) return false;
-  if (/^\$\{(?!CLAUDE_PROJECT_DIR\})[^}]+\}\//.test(token)) return false;
-  if (/^\$(?!CLAUDE_PROJECT_DIR\/)[A-Za-z_][A-Za-z0-9_]*\//.test(token)) return false;
+  if (/^\$\{(?!(?:CLAUDE|DEVIN)_PROJECT_DIR\})[^}]+\}\//.test(token)) return false;
+  if (/^\$(?!(?:CLAUDE|DEVIN)_PROJECT_DIR\/)[A-Za-z_][A-Za-z0-9_]*\//.test(token)) return false;
   return (
     token.startsWith('./') ||
     token.startsWith('../') ||
     token.startsWith('${CLAUDE_PROJECT_DIR}/') ||
     token.startsWith('$CLAUDE_PROJECT_DIR/') ||
+    token.startsWith('${DEVIN_PROJECT_DIR}/') ||
+    token.startsWith('$DEVIN_PROJECT_DIR/') ||
     token.includes('/')
   );
 }
@@ -395,8 +531,8 @@ function resolvesPathToken(token: string, ctx: ScanContext): boolean | null {
   if (!isRepositoryPath(value)) return null;
   const normalized = value.replace(/^\.\//, '');
   const stripped = normalized
-    .replace(/^\$\{CLAUDE_PROJECT_DIR\}\//, '')
-    .replace(/^\$CLAUDE_PROJECT_DIR\//, '')
+    .replace(/^\$\{(?:CLAUDE|DEVIN)_PROJECT_DIR\}\//, '')
+    .replace(/^\$(?:CLAUDE|DEVIN)_PROJECT_DIR\//, '')
     .replace(/^\.\//, '');
   if (/(^|\/)node_modules\/\.bin\//.test(stripped)) return true;
 
@@ -415,7 +551,7 @@ export function hookCommandPathsResolve(
   const missing: string[] = [];
   let validated = 0;
   for (const invocation of invocations) {
-    for (const token of invocationTokens(invocation)) {
+    for (const token of invocationPathValues(invocation)) {
       const resolved = resolvesPathToken(token, ctx);
       if (resolved === null) continue;
       validated += 1;

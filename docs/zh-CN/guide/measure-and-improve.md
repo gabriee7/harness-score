@@ -415,7 +415,8 @@ image:{BADGE_URL}[Harness Score L4,link={LINK},height=20]
 ### Context & Guides (20 pts)
 
 #### CTX-01 · Agent context file present — 4 pts {#ctx-01}
-仓库根目录存在 `AGENTS.md`（或 `CLAUDE.md` / `GEMINI.md`）。
+存在项目 guide：根目录 `AGENTS.md`、`CLAUDE.md` 或 `GEMINI.md`，或 Claude Code
+在 `.claude/CLAUDE.md` / `.claude/AGENTS.md` 的 session-start 说明（非 scoped rules）。
 **修复：** 创建 `AGENTS.md`，回答：项目是什么、如何构建与测试、有哪些约定、哪些地方绝对不能动。方案见
 [第 3 章](./guides-feedforward#writing-an-agents-md-that-works)。
 
@@ -427,21 +428,21 @@ image:{BADGE_URL}[Harness Score L4,link={LINK},height=20]
 #### CTX-03 · Scoped rules in use — 4 pts {#ctx-03}
 任意受支持工具至少有一条 scoped rule 文件（如 `.cursor/rules/*.mdc`、
 `.windsurf/rules/*.md`、`.clinerules/*.md`、`.continue/rules/*.md`、
-`.github/instructions/*.instructions.md`、`.agents/rules/*`）。子目录中的嵌套 context
-文件（根目录以下的 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`）同样计入 — 在 Claude
+`.github/instructions/*.instructions.md`、`.agents/rules/*`、`.claude/rules/**/*.md`）。代码子目录中的嵌套 context
+文件（根目录以下、且非 `.claude/CLAUDE.md` 或 `.claude/AGENTS.md` 的 `AGENTS.md`、`CLAUDE.md`、`GEMINI.md`）同样计入 — 在 Claude
 Code、Codex 等工具中，它们相当于目录级 rules。
 **修复：** 先写一条简短的 always-on rule 承载不可妥协的底线，
 再按区域添加 path-scoped rules（或按子树添加嵌套 context 文件）。
 
 #### CTX-04 · Rules have valid frontmatter — 3 pts {#ctx-04}
 每条 rule 都声明激活元数据（`description`、`globs`/`trigger`/`paths`/`applyTo`，或 `alwaysApply`）。
-工具无需元数据即自动加载的 rules — `.continue/rules/*` 与嵌套
+工具无需元数据即自动加载的 rules — `.continue/rules/*`、`.claude/rules/*`（仅可选 `paths`）与嵌套
 context 文件 — 按设计即通过。
 **修复：** 添加 frontmatter 块；没有它，智能体无法判断 rule 何时生效。
 
 #### CTX-05 · Rules are scoped — 2 pts {#ctx-05}
 并非每条 rule 都是全局 always-on。嵌套 context 文件视为 scoped —
-仅作用于其所在子树。
+仅作用于其所在子树。Claude Code 的 `.claude/rules/*.md` 若无 `paths` frontmatter 则为 always-on；仅保留一条无 `paths` 的 rule，或使用 `paths:` 限定范围。
 **修复：** 将 rules 限定到路径（`globs:`、`trigger:` glob、`paths:`、`applyTo:`），
 仅在相关时加载 — 每条 always-on rule 都会占用每次请求的 context。
 
@@ -459,7 +460,7 @@ context 文件 — 按设计即通过。
 ### Skills & Commands (17 pts)
 
 #### SKL-01 · At least one skill — 4 pts {#skl-01}
-`.cursor/skills/<name>/`、`.claude/skills/<name>/` 或 `.agents/skills/<name>/` 下存在 `SKILL.md`。
+`.cursor/skills/<name>/`、`.claude/skills/<name>/`、`.agents/skills/<name>/` 下存在 `SKILL.md`；或当扫描根为 Claude Code / Cursor plugin 仓库时，在默认 plugin `skills/<name>/` 下（扫描根存在 `.claude-plugin/plugin.json` 或 `.cursor-plugin/plugin.json`）。
 **修复：** 将最常重复的流程（部署、发布、迁移）
 封装为 skill — [第 3 章](./guides-feedforward#skills-the-procedural-layer)。
 
@@ -470,7 +471,7 @@ context 文件 — 按设计即通过。
 
 #### SKL-03 · Explicit workflows/commands defined — 3 pts {#skl-03}
 存在 command 或 workflow 文件（`.cursor/commands/`、`.windsurf/workflows/`、
-`.claude/commands/`、`.continue/prompts/`、`.zed/commands/`、`.agents/workflows/`）。
+`.claude/commands/`、`.continue/prompts/`、`.zed/commands/`、`.agents/workflows/`，或扫描根下的 plugin `commands/`）。
 **修复：** 将你有意触发的 workflow（`/review`、`/release`）
 编码为 command/workflow 文件。
 
@@ -479,7 +480,7 @@ description ≥40 字符。
 **修复：** 将 description 写成触发条件 — 「当用户要求部署或发布时使用；涵盖打 tag、流水线、回滚、冒烟测试。」
 
 #### AGT-01 · Custom subagent defined — 3 pts {#agt-01}
-`.cursor/agents/`、`.claude/agents/` 或 `.opencode/agents/` 下存在 subagent 文件。
+`.cursor/agents/`、`.claude/agents/`、`.opencode/agents/` 或扫描根下的 plugin `agents/` 下存在 subagent 文件。
 **修复：** 为主智能体应委派的任务（规划、审查、发布）封装专用 subagent — 见
 [Subagents](./cursor-harness-surface#subagents-purpose-built-delegates)
 （第 2 章）。
@@ -493,13 +494,16 @@ description ≥40 字符。
 
 Harness 工件既可从仓库根目录按规范路径识别，也可在工具目录本身作为扫描根目录时识别。
 例如，扫描 `.claude` 时，物理路径 `settings.json`、`hooks/`、`skills/` 和 `agents/`
-会被识别为对应的 `.claude/...` 路径。其他名称的通用根目录不会应用此规则。证据始终使用
+会被识别为对应的 `.claude/...` 路径；扫描 `.devin` 时，同样识别 `hooks.v1.json`、
+`config.json`（`hooks` 键）、`hooks/` 和 `skills/`。扫描 plugin 仓库根（扫描根存在
+`.claude-plugin/plugin.json` 或 `.cursor-plugin/plugin.json`）时，默认识别 `skills/`、`commands/`、
+`agents/` 与 `hooks/hooks.json` 为对应工具的规范路径；树内其他位置的嵌套 plugin manifest 不会启用此别名。其他名称的通用根目录不会应用此规则。证据始终使用
 实际读取的物理路径。
 
 #### HKS-01 · Hooks configuration present and valid JSON — 4 pts {#hks-01}
-`.cursor/hooks.json` 或 `.claude/settings.json`（`hooks` 键）存在、可解析为 JSON，且包含
-hooks 对象。当存在多个配置时，优先选择有效且非空的配置；再依次按原生根目录深度、事件数量
-和路径字典序进行确定性选择。
+`.cursor/hooks.json`、`.claude/settings.json`（`hooks` 键）、扫描根下的 plugin `hooks/hooks.json`、`.devin/hooks.v1.json`（独立
+event 映射）或 `.devin/config.json`（`hooks` 键）存在且可解析为 JSON。当存在多个配置时，优先选择有效且非空的配置；再依次按原生根目录深度、事件数量
+和路径字典序进行确定性选择。gitignore 的 `.devin/config.local.json` 不会被扫描。
 **修复：** 创建 hooks 配置，并按
 [第 5 章](./guardrails-and-safety#gate-hooks) 的方案逐步扩展。
 
@@ -512,45 +516,51 @@ hooks 对象。当存在多个配置时，优先选择有效且非空的配置�
 `PostToolBatch`、`PermissionDenied`、`Notification`、`SubagentStart`、`SubagentStop`、
 `TaskCreated`、`TaskCompleted`、`Stop`、`StopFailure`、`TeammateIdle`、`ConfigChange`、
 `CwdChanged`、`DirectoryAdded`、`FileChanged`、`WorktreeCreate`、`WorktreeRemove`、
-`PreCompact`、`PostCompact`、`SessionEnd`、`Elicitation` 和 `ElicitationResult`。
+`PreCompact`、`PostCompact`、`SessionEnd`、`Elicitation` 和 `ElicitationResult`。Devin 的
+独立映射文档列出 `PreToolUse`、`PostToolUse`、`PermissionRequest`、`UserPromptSubmit`、
+`Stop`、`PostCompaction`、`SessionStart` 和 `SessionEnd`（无需 `version` 字段）。
 **向前兼容：** 未知但结构有效的事件保留分数，并产生 `unknown-hook-event` warning。
 空事件或结构错误的事件仍会失败。
 
 #### HKS-03 · Gate hook guards risky operations — 4 pts {#hks-03}
 已注册 gate hook（Cursor：`beforeShellExecution`、`beforeMCPExecution`、
-`preToolUse` 或 `beforeReadFile`；Claude Code：`PreToolUse`）。
+`preToolUse` 或 `beforeReadFile`；Claude Code 或 Devin：`PreToolUse` 或 `PermissionRequest`）。
 **修复：** 添加第 5 章的 destructive-command deny gate — 文字 rules 是请求；gate 是事实。
 
 #### HKS-04 · Feedback hook observes output — 2 pts {#hks-04}
 已注册 feedback hook（Cursor：`afterFileEdit`、`postToolUse` 等；
-Claude Code：`PostToolUse`）。
+Claude Code：`PostToolUse`；Devin：`PostToolUse` 或 `Stop`）。
 **修复：** 编辑时 format-and-lint，让智能体在会话内获得即时反馈。
 
 #### HKS-05 · Hook scripts committed — 2 pts {#hks-05}
 命令可执行文件、shell 命令或 `args` 条目中出现的每个仓库本地路径都必须解析到已提交文件。
-当 `.claude` 是扫描根目录时，`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` 等带项目
-前缀的规范路径也会解析到物理路径 `hooks/check.js`。不执行命令的有效 handler 没有适用的
-本地脚本，因此可以通过。
+`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` 与 `${DEVIN_PROJECT_DIR}/.devin/hooks/check.py`
+等项目前缀规范路径也会解析到原生根目录下的物理 hook 路径。Devin 使用
+`os.path.join(os.environ['DEVIN_PROJECT_DIR'], …)` 形式的命令会在不执行 Python 的情况下解析。
+不执行命令的有效 handler 没有适用的本地脚本，因此可以通过。
 **修复：** 提交所有引用的本地脚本；任何一个缺失路径都会使 HKS-05 失败。
 
 ### Sensors & Feedback (20 pts)
 
 #### SNS-01 · Test runner configured — 6 pts {#sns-01}
-存在真实的测试脚本/配置（vitest、jest、pytest、go test、cargo test 等）。
+存在真实的测试脚本/配置（vitest、jest、pytest、go test、cargo test、
+文件加载 `node:test` 时的 `node --test`、phpunit.xml、pest.php 等），或在 Composer 中声明的测试包
+（`phpunit/phpunit`、`pestphp/pest` 等）。
 **修复：** 配置 runner 并提供一个明确的入口，在 AGENTS.md 中记录 —
 测试是智能体验证自身工作的方式。
 
 #### SNS-02 · Linter configured — 5 pts {#sns-02}
-eslint/biome、ruff、golangci-lint、rubocop 或等价工具。
+eslint/biome、ruff、golangci-lint、rubocop、phpcs/rector 或等价工具。
 **修复：** 能用 lint rule 表达的约定就不再需要文字说明。
 
 #### SNS-03 · Type checking in place — 4 pts {#sns-03}
-tsconfig（理想情况下 `strict: true`）、mypy/pyright，或静态类型语言。
+tsconfig（理想情况下 `strict: true`）、mypy/pyright/ty、phpstan/psalm，或静态类型语言。
 **修复：** 类型检查器是唯一免费审查每次智能体编辑的传感器 —
 [第 4 章](./sensors-feedback#type-checking-the-free-sensor)。
 
 #### SNS-04 · Formatter configured — 3 pts {#sns-04}
-prettier/biome、black/ruff-format、gofmt/rustfmt。
+prettier/biome、black/ruff-format、gofmt/rustfmt、pint 或 php-cs-fixer
+（无配置文件时，`composer.json` 中的 `laravel/pint` 也算）。
 **修复：** diff 中的格式噪音会掩盖审查中的真实错误。
 
 #### SNS-05 · Test files exist — 2 pts {#sns-05}
@@ -560,7 +570,9 @@ prettier/biome、black/ruff-format、gofmt/rustfmt。
 ### CI Feedback (14 pts)
 
 #### CI-01 · CI pipeline configured — 4 pts {#ci-01}
-GitHub Actions workflow（或 GitLab/CircleCI/Jenkins 等价物）。
+GitHub Actions workflow（或 GitLab/CircleCI/Jenkins 等价物），也包括
+`cloudbuild/` 下的 Google Cloud Build 配置。
+检测基于文件系统，会计入扫描根目录下任意深度的文件，因此嵌套工作区项目中的 CI 文件也算。它不会验证 CI 平台是否实际执行该文件。
 **修复：** 添加 `.github/workflows/ci.yml`，每次 push 运行传感器。
 
 #### CI-02 · CI runs the tests — 4 pts {#ci-02}
@@ -592,6 +604,11 @@ MCP 配置（`.cursor/mcp.json`、`.mcp.json`、
 **修复：** 使用 `${ENV_VAR}` 插值 — MCP 配置中的内联 key 等于向每个 clone 公开的 secret。
 
 #### HYG-05 · License present — 2 pts {#hyg-05}
+仓库根目录存在 `LICENSE`、`LICENSE.md`、`LICENSE.txt` 或 `COPYING`。
+**不适用：** 该文件不存在，且根目录 `composer.json` 或 `package.json` 的
+`license` 为 `proprietary` 或 `UNLICENSED`（闭源声明）。该 check 同时退出
+分数的分子和分母。`"private": true` 与 Cargo 的 `publish = false` 不会触发
+这一点。缺少文件且 license 为 `MIT` 等 SPDX id 时仍然失败。
 **修复：** 添加 LICENSE；开源使用与插件 marketplace 所需。
 
 #### HYG-06 · No secrets in harness files — 2 pts {#hyg-06}
@@ -603,10 +620,11 @@ package-lock.json、uv.lock、Cargo.lock、go.sum 或等价 lockfile。
 **修复：** 可复现安装意味着传感器在各处测试同一依赖树。
 
 #### HYG-08 · MCP config uses env interpolation for credentials — 3 pts {#hyg-08}
-MCP 配置文件有效，且任何 credential 形字段（token、key、
-secret、password 等）使用 `${ENV_VAR}` 插值而非字面量。
-HYG-04 的正面补充 — 无 MCP 设置的仓库此处不得分，
-与其他加分检查相同。
+当存在 MCP 配置（`.cursor/mcp.json`、`.mcp.json`、`.agents/mcp_config.json`）时，
+它必须是合法 JSON，且任何 credential 形字段（token、key、secret、password 等）
+使用 `${ENV_VAR}` 插值而非字面量。这是 HYG-04 的正面补充。
+**不适用：** 仓库没有 MCP 配置。不使用 MCP 并不是缺少插值配置，因此该 check
+同时退出分数的分子和分母。之后添加配置会使该 check 重新适用。
 **修复：** 将 secrets 引用为 `"${VAR_NAME}"`，并在 `.env.example` 中记录所需变量。
 
 ## 实践改进计划

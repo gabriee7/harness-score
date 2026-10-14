@@ -86,7 +86,7 @@ Typical product repository के लिए floor:
 
 - [ ] `.gitignore` env files cover; tree में real secrets नहीं
 - [ ] `mcp.json` literal credentials से clean
-- [ ] `hooks.json` एक shell gate (destructive patterns → deny/ask)
+- [ ] Recognized hooks config (`.cursor/hooks.json`, Claude Code `settings.json`, `.devin/hooks.v1.json`, या `.devin/config.json` hooks key) एक gate (destructive patterns → deny/ask)
 - [ ] एक feedback hook (edit पर format/lint)
 - [ ] Branch protection required CI checks के साथ
 
