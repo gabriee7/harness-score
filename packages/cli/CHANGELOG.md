@@ -1,5 +1,13 @@
 # harness-score
 
+## 1.8.2
+
+### Patch Changes
+
+- 9e8b0cb: Limit CI test and static-check detection to executed commands, ignoring workflow labels.
+
+  Thanks to [@paladini](https://github.com/paladini) for reporting this issue.
+
 ## 1.8.1
 
 ### Patch Changes
