@@ -13,7 +13,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            node: 18
+            node: 22
           - os: windows-latest
             node: 22
     runs-on: ${{ matrix.os }}
@@ -26,6 +26,22 @@ jobs:
       - run: npm ci
       - name: test
         run: npm test
+
+  runtime-node-18:
+    name: runtime (ubuntu-latest, Node 18)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - name: Build and smoke-test the CLI on Node 18
+        run: |
+          npm run build -w harness-score
+          node packages/cli/dist/cli.js fixtures/level-4 --json > "$RUNNER_TEMP/harness-score-node18.json"
+          node -e "const r = require(process.argv[1]); if (r.verdicts.maturity.status !== 'complete') process.exit(1)" "$RUNNER_TEMP/harness-score-node18.json"
 
   checks:
     name: Full checks (ubuntu-latest, Node 22)

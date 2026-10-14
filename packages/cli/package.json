@@ -53,9 +53,9 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@types/node": "^26.1.1",
-    "@vitest/coverage-v8": "^3.0.0",
+    "@vitest/coverage-v8": "^5.0.4",
     "tsup": "^8.5.1",
     "typescript": "^5.6.0",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.4"
   }
 }

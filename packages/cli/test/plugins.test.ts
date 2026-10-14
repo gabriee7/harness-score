@@ -3,6 +3,20 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildUserOverlay } from '../src/harness/global-paths.js';
+import {
+  CLAUDE_PLUGIN_MANIFEST,
+  CURSOR_PLUGIN_MANIFEST,
+  claudePluginsRegistryPath,
+  collectClaudePluginInstall,
+  parseInstalledPluginsRegistry,
+  pluginLayoutAtScanRoot,
+  pluginLayoutToolId,
+  pluginNamespacedSegment,
+  pluginPhysicalToCanonical,
+  pluginPhysicalToCanonicalForInstall,
+  readClaudeEnabledPlugins,
+  shouldIncludeInstalledPlugin,
+} from '../src/harness/plugins.js';
 import { buildReport } from '../src/score.js';
 import { check, fakeContext } from './helpers.js';
 
@@ -165,5 +179,173 @@ describe('Claude Code user-installed plugins overlay', () => {
         fs.rmSync(repo, { recursive: true, force: true });
       }
     });
+  });
+});
+
+describe('plugin path and registry helpers', () => {
+  test('detects only manifests at the scan root and maps default-layout paths', () => {
+    expect(pluginLayoutAtScanRoot(fakeContext({ [CLAUDE_PLUGIN_MANIFEST]: '{}' }))).toBe('claude-code');
+    expect(pluginLayoutAtScanRoot(fakeContext({ [CURSOR_PLUGIN_MANIFEST]: '{}' }))).toBe('cursor');
+    expect(pluginLayoutAtScanRoot(fakeContext({}))).toBeNull();
+    expect(pluginLayoutToolId('cursor')).toBe('cursor');
+    expect(pluginPhysicalToCanonical('skills/review/SKILL.md', 'cursor', true)).toBe(
+      '.cursor/skills/review/SKILL.md',
+    );
+    expect(pluginPhysicalToCanonical('SKILL.md', 'claude-code', false)).toBe(
+      '.claude/skills/plugin-root/SKILL.md',
+    );
+    expect(pluginPhysicalToCanonical('SKILL.md', 'claude-code', true)).toBeNull();
+    expect(pluginPhysicalToCanonical('commands/review.md', 'cursor', true)).toBe(
+      '.cursor/commands/review.md',
+    );
+    expect(pluginPhysicalToCanonical('agents/reviewer.md', 'claude-code', true)).toBe(
+      '.claude/agents/reviewer.md',
+    );
+    expect(pluginPhysicalToCanonical('hooks/hooks.json', 'cursor', true)).toBe('.cursor/hooks.json');
+    expect(pluginPhysicalToCanonical('assets/icon.svg', 'cursor', true)).toBeNull();
+  });
+
+  test('namespaces installed plugin paths and rejects unsupported layouts', () => {
+    expect(pluginNamespacedSegment('catalog@owner', 'review')).toBe('catalog@owner--review');
+    expect(
+      pluginPhysicalToCanonicalForInstall('skills/review/SKILL.md', 'claude-code', 'cat@owner', true),
+    ).toBe('.claude/skills/cat@owner--review/SKILL.md');
+    expect(pluginPhysicalToCanonicalForInstall('SKILL.md', 'claude-code', 'cat@owner', false)).toBe(
+      '.claude/skills/cat@owner--plugin-root/SKILL.md',
+    );
+    expect(pluginPhysicalToCanonicalForInstall('commands/review.md', 'claude-code', 'cat@owner', true)).toBe(
+      '.claude/commands/cat@owner--review.md',
+    );
+    expect(pluginPhysicalToCanonicalForInstall('agents/reviewer.md', 'claude-code', 'cat@owner', true)).toBe(
+      '.claude/agents/cat@owner--reviewer.md',
+    );
+    expect(pluginPhysicalToCanonicalForInstall('hooks/hooks.json', 'claude-code', 'cat@owner', true)).toBe(
+      '.claude/settings.json',
+    );
+    expect(
+      pluginPhysicalToCanonicalForInstall('assets/icon.svg', 'claude-code', 'cat@owner', true),
+    ).toBeNull();
+  });
+
+  test('parses registry entries and checks enabled user installs', () => {
+    expect(parseInstalledPluginsRegistry(null)).toBeNull();
+    expect(parseInstalledPluginsRegistry([])).toBeNull();
+    expect(parseInstalledPluginsRegistry({ plugins: [] })).toBeNull();
+    expect(
+      parseInstalledPluginsRegistry({
+        plugins: { malformed: 'ignored', empty: [null, 2, []], valid: [null, { scope: 'user' }] },
+      }),
+    ).toEqual({ valid: [{ scope: 'user' }] });
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-plugin-entry-'));
+    const directory = path.join(root, 'install');
+    fs.mkdirSync(directory);
+    const file = path.join(root, 'not-a-directory');
+    fs.writeFileSync(file, 'file');
+    try {
+      expect(
+        shouldIncludeInstalledPlugin('cat@owner', { scope: 'project', installPath: directory }, null),
+      ).toBe(false);
+      expect(shouldIncludeInstalledPlugin('cat@owner', { scope: 'user' }, null)).toBe(false);
+      expect(
+        shouldIncludeInstalledPlugin('cat@owner', { scope: 'user', installPath: 'relative' }, null),
+      ).toBe(false);
+      expect(shouldIncludeInstalledPlugin('cat@owner', { scope: 'user', installPath: file }, null)).toBe(
+        false,
+      );
+      expect(shouldIncludeInstalledPlugin('cat@owner', { scope: 'user', installPath: directory }, null)).toBe(
+        true,
+      );
+      expect(shouldIncludeInstalledPlugin('cat@owner', { scope: 'user', installPath: directory }, {})).toBe(
+        false,
+      );
+      expect(
+        shouldIncludeInstalledPlugin(
+          'cat@owner',
+          { scope: 'user', installPath: directory },
+          { 'cat@owner': false },
+        ),
+      ).toBe(false);
+      expect(
+        shouldIncludeInstalledPlugin(
+          'cat@owner',
+          { scope: 'user', installPath: directory },
+          { 'cat@owner': true },
+        ),
+      ).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('reads enabled plugin settings and honors the configured registry path', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-plugin-settings-'));
+    const settings = path.join(home, '.claude', 'settings.json');
+    const previous = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
+    try {
+      expect(readClaudeEnabledPlugins(home)).toBeNull();
+      fs.mkdirSync(path.dirname(settings), { recursive: true });
+      fs.writeFileSync(settings, '{bad json');
+      expect(readClaudeEnabledPlugins(home)).toBeNull();
+      fs.writeFileSync(settings, '{}');
+      expect(readClaudeEnabledPlugins(home)).toBeNull();
+      fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: [] }));
+      expect(readClaudeEnabledPlugins(home)).toBeNull();
+      fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'cat@owner': true } }));
+      expect(readClaudeEnabledPlugins(home)).toEqual({ 'cat@owner': true });
+      delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
+      expect(claudePluginsRegistryPath(home)).toBe(
+        path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
+      );
+      process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = path.join(home, 'cache');
+      expect(claudePluginsRegistryPath(home)).toBe(path.join(home, 'cache', 'installed_plugins.json'));
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR;
+      else process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR = previous;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('collects only supported files from valid plugin install directories', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-plugin-collect-'));
+    const install = path.join(root, 'installed');
+    fs.mkdirSync(path.join(install, '.claude-plugin'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'skills', 'review'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'commands'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'agents'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(install, CLAUDE_PLUGIN_MANIFEST), '{}');
+    fs.writeFileSync(path.join(install, 'skills', 'review', 'SKILL.md'), '# Review');
+    fs.writeFileSync(path.join(install, 'commands', 'review.md'), '# Review');
+    fs.writeFileSync(path.join(install, 'agents', 'reviewer.md'), '# Reviewer');
+    fs.writeFileSync(path.join(install, 'hooks', 'hooks.json'), '{}');
+    try {
+      const withoutHooks = new Map<string, string>();
+      collectClaudePluginInstall(install, 'catalog@owner', withoutHooks, false);
+      expect([...withoutHooks.keys()]).toEqual([
+        '.claude/agents/catalog@owner--reviewer.md',
+        '.claude/commands/catalog@owner--review.md',
+        '.claude/skills/catalog@owner--review/SKILL.md',
+      ]);
+
+      const withExistingSettings = new Map([['.claude/settings.json', 'repo settings']]);
+      collectClaudePluginInstall(install, 'catalog@owner', withExistingSettings, true);
+      expect(withExistingSettings.get('.claude/settings.json')).toBe('repo settings');
+      expect(withExistingSettings.size).toBe(4);
+
+      const noSkills = path.join(root, 'root-skill');
+      fs.mkdirSync(path.join(noSkills, '.claude-plugin'), { recursive: true });
+      fs.writeFileSync(path.join(noSkills, CLAUDE_PLUGIN_MANIFEST), '{}');
+      fs.writeFileSync(path.join(noSkills, 'SKILL.md'), '# Root skill');
+      const rootSkillFiles = new Map<string, string>();
+      collectClaudePluginInstall(noSkills, 'root@owner', rootSkillFiles, true);
+      expect(rootSkillFiles.has('.claude/skills/root@owner--plugin-root/SKILL.md')).toBe(true);
+
+      const invalid = new Map<string, string>();
+      collectClaudePluginInstall(path.join(root, 'missing'), 'missing', invalid, true);
+      expect(invalid.size).toBe(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

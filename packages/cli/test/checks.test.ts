@@ -1,7 +1,77 @@
 import { describe, expect, test } from 'vitest';
 import { ALL_CHECKS } from '../src/checks/index.js';
+import { detectEcosystems } from '../src/checks/sensors.js';
+import type { HarnessArtifact } from '../src/harness/collectors.js';
+import { countRuleScopes, ruleHasValidFrontmatter, ruleIsScoped } from '../src/harness/frontmatter.js';
 import { readNormalizedHooks } from '../src/harness/hooks.js';
+import type { ToolId } from '../src/harness/registry.js';
 import { check, fakeContext } from './helpers.js';
+
+const ruleFrontmatter = (body: string) => `---\n${body}\n---\n`;
+
+describe('rule activation metadata', () => {
+  test.each([
+    ['.continue/rules/review.md', 'continue', null, true],
+    ['.claude/rules/review.md', 'claude-code', null, true],
+    ['docs/AGENTS.md', 'cursor', null, true],
+    ['.cursor/rules/review.mdc', 'cursor', ruleFrontmatter('globs: src/**'), true],
+    ['.windsurf/rules/review.md', 'windsurf', ruleFrontmatter('trigger: glob'), true],
+    ['.clinerules/review.md', 'cline', ruleFrontmatter('paths: src/**'), true],
+    ['.github/instructions/review.md', 'copilot', ruleFrontmatter('applyTo: src/**'), true],
+    ['.continue/rules/custom.md', 'continue', ruleFrontmatter('description: applies'), true],
+    ['.agent/rules/review.md', 'antigravity', ruleFrontmatter('globs: src/**'), true],
+    ['.codex/rules/review.md', 'codex', ruleFrontmatter('description: applies'), true],
+    ['.cursor/rules/review.mdc', 'cursor', 'plain text', false],
+    ['.clinerules/review.md', 'cline', ruleFrontmatter('paths: ""'), false],
+    ['.github/instructions/review.md', 'copilot', ruleFrontmatter('applyTo: ""'), false],
+    ['.codex/rules/review.md', 'codex', ruleFrontmatter('name: review'), false],
+  ] as const)('validates activation metadata for %s (%s)', (path, tool, content, expected) => {
+    expect(ruleHasValidFrontmatter(path, tool, content)).toBe(expected);
+  });
+
+  test.each([
+    ['.cursor/rules/review.mdc', 'cursor', ruleFrontmatter('globs: src/**'), [], true],
+    ['.windsurf/rules/review.md', 'windsurf', ruleFrontmatter('trigger: src/**'), [], true],
+    ['.windsurf/rules/review.md', 'windsurf', ruleFrontmatter('trigger: always-on'), [], false],
+    ['.clinerules/review.md', 'cline', ruleFrontmatter('paths: src/**'), [], true],
+    ['.clinerules/review.md', 'cline', ruleFrontmatter('paths: x'), [], false],
+    ['.github/instructions/review.md', 'copilot', ruleFrontmatter('applyTo: src/**'), [], true],
+    ['.claude/rules/review.md', 'claude-code', ruleFrontmatter('paths:\n  - src/**'), [], true],
+    ['.claude/rules/review.md', 'claude-code', ruleFrontmatter('description: always'), [], false],
+    ['.continue/rules/a.md', 'continue', null, [{ toolId: 'continue' }], false],
+    ['.continue/rules/a.md', 'continue', null, [{ toolId: 'continue' }, { toolId: 'continue' }], true],
+    ['.agent/rules/review.md', 'antigravity', ruleFrontmatter('trigger: src/**'), [], true],
+    ['.agent/rules/review.md', 'antigravity', ruleFrontmatter('trigger: always on'), [], false],
+    ['.zed/rules/review.md', 'zed', ruleFrontmatter('description: rule'), [], false],
+    ['docs/AGENTS.md', 'cursor', null, [], true],
+  ] as const)('counts scope for %s (%s)', (path, tool, content, rules, expected) => {
+    expect(ruleIsScoped(path, tool, content, rules as HarnessArtifact[])).toBe(expected);
+  });
+
+  test('counts scoped, always-on, and auto-loaded rules', () => {
+    const rules = [
+      '.cursor/rules/scoped.mdc',
+      '.cursor/rules/always.mdc',
+      '.claude/rules/implicit.md',
+      '.continue/rules/one.md',
+      '.continue/rules/two.md',
+    ].map((path, i) => ({
+      path,
+      canonicalPath: path,
+      nativeDepth: 0,
+      toolId: (i < 2 ? 'cursor' : i === 2 ? 'claude-code' : 'continue') as ToolId,
+      kind: 'rules' as const,
+    }));
+    const contents = new Map([
+      [rules[0]!.path, ruleFrontmatter('globs: src/**')],
+      [rules[1]!.path, ruleFrontmatter('alwaysApply: true')],
+      [rules[3]!.path, null],
+      [rules[4]!.path, null],
+    ]);
+
+    expect(countRuleScopes(rules, (path) => contents.get(path) ?? null)).toEqual({ scoped: 3, alwaysOn: 2 });
+  });
+});
 
 describe('context checks', () => {
   test('CTX-01 fails with no AGENTS.md or CLAUDE.md', async () => {
@@ -1056,6 +1126,43 @@ function nodeTestSource(source: string): string {
 }
 
 describe('sensor checks', () => {
+  test('detects every supported ecosystem and sensor configuration family', async () => {
+    const ctx = fakeContext({
+      'package.json': JSON.stringify({
+        scripts: { test: 'vitest run' },
+        dependencies: { 'phpunit/phpunit': '*', 'friendsofphp/php-cs-fixer': '*' },
+        devDependencies: { vitest: '*', eslint: '*', prettier: '*', 'laravel/pint': '*' },
+        prettier: {},
+      }),
+      'pyproject.toml': '[tool.pytest.ini_options]\n[tool.ruff]\n[tool.mypy]\n[tool.pyright]\n',
+      'requirements.txt': 'pytest',
+      'go.mod': 'module example.test/app',
+      'example_test.go': 'package app',
+      'Cargo.toml': '[package]\nname = "app"',
+      'tests/unit.rs': '#[test] fn works() {}',
+      'pom.xml': '<artifactId>spotless-maven-plugin</artifactId>',
+      Gemfile: 'source "https://rubygems.org"',
+      'composer.json': JSON.stringify({
+        require: { 'friendsofphp/php-cs-fixer': '*', 'laravel/pint': '*' },
+        'require-dev': { 'phpunit/phpunit': '*', 'pestphp/pest': '*' },
+      }),
+      'app.csproj': '<Project />',
+      'phpunit.xml': '<phpunit />',
+      'tests/Pest.php': '<?php',
+      'phpstan.neon': 'level: 8',
+      'ty.toml': '[tool.ty]',
+      'pyrightconfig.json': '{}',
+      'biome.json': '{}',
+      '.php-cs-fixer.php': '<?php',
+      'src.test.ts': ['import { test } from "node:', 'test"'].join(''),
+    });
+
+    expect(detectEcosystems(ctx)).toEqual(['node', 'python', 'go', 'rust', 'java', 'ruby', 'php', 'dotnet']);
+    for (const id of ['SNS-01', 'SNS-02', 'SNS-03', 'SNS-04']) {
+      expect((await check(id)).run(ctx).passed).toBe(true);
+    }
+  });
+
   test('SNS-01 ignores npm default placeholder test script', async () => {
     const ctx = fakeContext({
       'package.json': JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }),
