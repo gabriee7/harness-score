@@ -32,7 +32,9 @@ error messages are precise enough for an agent to act on autonomously.
 
 - TypeScript: `"strict": true` — non-strict TS silently forfeits most of the
   value.
-- Python: mypy or pyright, in CI, not just in the IDE.
+- Python: mypy, pyright, or ty, in CI, not just in the IDE.
+- PHP: phpstan or psalm (read `level:` in `phpstan.neon*` when present), in
+  CI, not just locally.
 - Go, Rust, Java, C#: the compiler already does this; make sure the agent
   builds before it declares done.
 
@@ -52,9 +54,11 @@ to verify its own work mid-task. That changes what "good tests" means:
    need three env vars and a database, script the setup.
 3. **Deterministic.** Flaky tests teach agents (like humans) to ignore red.
 4. **Behavioral.** Tests that pin implementation details block legitimate
-   refactors; tests that pin behavior catch real regressions. Fowler's
-   "approved fixtures" pattern — golden files reviewed by humans, checked by
-   machines — works well for agent-heavy codebases.
+   refactors; tests that pin behavior catch real regressions. The
+   [approved fixtures](https://lexler.github.io/augmented-coding-patterns/patterns/approved-fixtures/)
+   pattern — golden files reviewed by humans, checked by machines — which
+   Böckeler notes colleagues use selectively, works well for agent-heavy
+   codebases.
 
 And a convention worth putting in a rule: **new behavior lands with a test,
 and a failing test is never deleted to go green.** Agents will do both if
@@ -76,7 +80,7 @@ Priority for agent work:
 
 ## Architecture fitness: sensors for structure
 
-Fowler's second regulation dimension is architectural fitness — sensors that
+Böckeler's second regulation dimension is architectural fitness — sensors that
 verify structure, not just syntax:
 
 - **Dependency rules**: "core never imports from api" — ArchUnit (JVM),

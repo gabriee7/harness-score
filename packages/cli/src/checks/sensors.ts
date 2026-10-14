@@ -1,5 +1,6 @@
 import type { Check, ScanContext } from '../types.js';
 import { safeJsonParse } from '../util.js';
+import { hasComposerPackage } from './composer.js';
 
 type Ecosystem = 'node' | 'python' | 'go' | 'rust' | 'java' | 'ruby' | 'php' | 'dotnet';
 
@@ -39,8 +40,49 @@ function pyprojectHas(ctx: ScanContext, needle: string): boolean {
   return content?.includes(needle) ?? false;
 }
 
+/** Astral ty tables: `[tool.ty]`, `[tool.ty.rules]`, `[[tool.ty.overrides]]`. Not `[tool.types]`. */
+const TY_TABLE_RE = /^\[{1,2}tool\.ty(?:\]|\.)/m;
+
+function hasTyConfig(ctx: ScanContext): boolean {
+  if (ctx.matching(/(^|\/)ty\.toml$/).length > 0) return true;
+  return ctx.matching(/(^|\/)pyproject\.toml$/).some((path) => TY_TABLE_RE.test(ctx.read(path) ?? ''));
+}
+
+function phpstanConfigEvidence(ctx: ScanContext): string | null {
+  const paths = [
+    ...ctx.matching(/(^|\/)phpstan\.neon(\.dist)?$/),
+    ...ctx.matching(/(^|\/)phpstan\.dist\.neon$/),
+  ];
+  if (paths.length === 0) return null;
+  const path = paths[0]!;
+  const content = ctx.read(path) ?? '';
+  const levelMatch = /^\s*level\s*:\s*(\d+)/m.exec(content);
+  return levelMatch ? `${path} (level: ${levelMatch[1]})` : path;
+}
+
 const TEST_FILE_RE =
   /(\.(test|spec)\.[jt]sx?$)|(_test\.go$)|((^|\/)test_[^/]+\.py$)|([^/]+_test\.py$)|(Test\.java$)|(_spec\.rb$)|((^|\/)tests?\/[^/]+)/;
+
+const JS_SOURCE_EXT = '(?:js|mjs|cjs|ts|mts|cts|jsx|tsx)';
+
+/** Test-like JS/TS paths, including Node's default `node --test` discovery names. */
+const NODE_TEST_CANDIDATE_RE = new RegExp(
+  String.raw`(?:\.(?:test|spec)\.${JS_SOURCE_EXT}$|_test\.${JS_SOURCE_EXT}$|(?:^|\/)test(?:-[^/]+)?\.${JS_SOURCE_EXT}$|(?:^|\/)tests?\/.*\.${JS_SOURCE_EXT}$)`,
+);
+
+/** `require('node:test')`, `from 'node:test'`, or `import('node:test')`, including subpaths. */
+const NODE_TEST_LOAD_RE =
+  /(?:\brequire\(\s*['"]node:test(?:\/[^'"]*)?['"]\s*\)|\bfrom\s+['"]node:test(?:\/[^'"]*)?['"]|\bimport\s*\(\s*['"]node:test(?:\/[^'"]*)?['"]\s*\))/;
+
+function nodeBuiltinTestEvidence(ctx: ScanContext): string | null {
+  for (const path of ctx.matching(NODE_TEST_CANDIDATE_RE)) {
+    const content = ctx.read(path);
+    if (content && NODE_TEST_LOAD_RE.test(content)) {
+      return `node:test built-in (node --test), e.g. ${path}`;
+    }
+  }
+  return null;
+}
 
 export const sensorChecks: Check[] = [
   {
@@ -49,7 +91,7 @@ export const sensorChecks: Check[] = [
     title: 'Test runner configured',
     points: 6,
     remediation:
-      'Wire up a test runner (vitest/jest, pytest, go test, cargo test…) with a standard entry point — tests are the strongest feedback sensor an agent can run on its own work.',
+      'Wire up a test runner (vitest/jest, pytest, go test, cargo test, node --test…) with a standard entry point — tests are the strongest feedback sensor an agent can run on its own work.',
     run(ctx) {
       const evidence: string[] = [];
       const pkg = rootPackageJson(ctx);
@@ -69,9 +111,36 @@ export const sensorChecks: Check[] = [
       if (ctx.has('Cargo.toml') && ctx.matching(/(^|\/)tests\/[^/]+\.rs$/).length > 0) {
         evidence.push('Rust tests/ directory (cargo test built-in)');
       }
-      return evidence.length > 0
-        ? { passed: true, evidence: `${evidence.slice(0, 3).join('; ')}.` }
-        : { passed: false, evidence: 'No test runner configuration or test script detected.' };
+      if (ctx.has('pom.xml')) evidence.push('Maven test lifecycle');
+      for (const f of [
+        'phpunit.xml',
+        'phpunit.xml.dist',
+        'phpunit.dist.xml',
+        'pest.php',
+        'codeception.yml',
+        'codeception.yml.dist',
+        'behat.yml',
+        'behat.yml.dist',
+      ]) {
+        if (ctx.has(f)) evidence.push(f);
+      }
+      if (ctx.has('tests/Pest.php')) evidence.push('tests/Pest.php');
+      const nodeBuiltin = nodeBuiltinTestEvidence(ctx);
+      if (nodeBuiltin) evidence.push(nodeBuiltin);
+      for (const runner of ['phpunit/phpunit', 'pestphp/pest', 'codeception/codeception', 'behat/behat']) {
+        if (hasComposerPackage(ctx, runner)) evidence.push(`${runner} in composer.json`);
+      }
+      if (evidence.length > 0) {
+        return { passed: true, evidence: `${evidence.slice(0, 3).join('; ')}.` };
+      }
+      const testFiles = ctx.matching(TEST_FILE_RE);
+      return {
+        passed: false,
+        evidence:
+          testFiles.length > 0
+            ? `Found ${testFiles.length} test file(s), e.g. ${testFiles[0]}, but no test runner or standard entry point detected.`
+            : 'No test runner configuration or test script detected.',
+      };
     },
   },
   {
@@ -94,8 +163,14 @@ export const sensorChecks: Check[] = [
         ...ctx.matching(/(^|\/)\.rubocop\.yml$/),
         ...ctx.matching(/(^|\/)checkstyle\.xml$/),
         ...ctx.matching(/(^|\/)phpcs\.xml(\.dist)?$/),
+        ...ctx.matching(/(^|\/)\.phpcs\.xml(\.dist)?$/),
+        ...ctx.matching(/(^|\/)ecs\.php$/),
+        ...ctx.matching(/(^|\/)rector\.php$/),
       ];
       if (pyprojectHas(ctx, '[tool.ruff')) configs.push('pyproject.toml [tool.ruff]');
+      for (const pkg of ['squizlabs/php_codesniffer', 'symplify/easy-coding-standard', 'rector/rector']) {
+        if (hasComposerPackage(ctx, pkg)) configs.push(`${pkg} in composer.json`);
+      }
       const pkg = rootPackageJson(ctx);
       if (hasDep(pkg, 'eslint') || hasDep(pkg, '@biomejs/biome') || hasDep(pkg, 'oxlint')) {
         configs.push('linter in package.json devDependencies');
@@ -111,7 +186,7 @@ export const sensorChecks: Check[] = [
     title: 'Type checking in place',
     points: 4,
     remediation:
-      'Enable static type checking (tsconfig.json with strict: true, mypy/pyright for Python) — typed code is dramatically more harnessable: the compiler catches agent mistakes for free.',
+      'Enable static type checking (tsconfig.json with strict: true, mypy/pyright/ty for Python) — typed code is dramatically more harnessable: the compiler catches agent mistakes for free.',
     run(ctx) {
       const ecosystems = detectEcosystems(ctx);
       const staticLangs = ecosystems.filter((e) => ['go', 'rust', 'java', 'dotnet'].includes(e));
@@ -124,6 +199,15 @@ export const sensorChecks: Check[] = [
       if (ctx.has('mypy.ini') || pyprojectHas(ctx, '[tool.mypy')) evidence.push('mypy configuration');
       if (ctx.has('pyrightconfig.json') || pyprojectHas(ctx, '[tool.pyright'))
         evidence.push('pyright configuration');
+      if (hasTyConfig(ctx)) evidence.push('ty configuration');
+      const phpstan = phpstanConfigEvidence(ctx);
+      if (phpstan) evidence.push(phpstan);
+      for (const f of ['psalm.xml', 'psalm.xml.dist']) {
+        if (ctx.has(f)) evidence.push(f);
+      }
+      for (const pkg of ['phpstan/phpstan', 'larastan/larastan', 'vimeo/psalm']) {
+        if (hasComposerPackage(ctx, pkg)) evidence.push(`${pkg} in composer.json`);
+      }
       if (staticLangs.length > 0) {
         evidence.push(`statically typed language(s): ${staticLangs.join(', ')} (compiler-enforced)`);
       }
@@ -163,6 +247,18 @@ export const sensorChecks: Check[] = [
       }
       if (ecosystems.includes('go')) evidence.push('gofmt (built into Go toolchain)');
       if (ecosystems.includes('rust')) evidence.push('rustfmt (built into Rust toolchain)');
+      if (
+        ctx.has('pom.xml') &&
+        ctx.read('pom.xml')?.includes('<artifactId>spotless-maven-plugin</artifactId>')
+      )
+        evidence.push('spotless used in maven');
+      if (ctx.has('pint.json')) evidence.push('pint.json');
+      for (const f of ['.php-cs-fixer.php', '.php-cs-fixer.dist.php', '.php_cs', '.php_cs.dist']) {
+        if (ctx.has(f)) evidence.push(f);
+      }
+      for (const pkg of ['laravel/pint', 'friendsofphp/php-cs-fixer']) {
+        if (hasComposerPackage(ctx, pkg)) evidence.push(`${pkg} in composer.json`);
+      }
       return evidence.length > 0
         ? { passed: true, evidence: `${[...new Set(evidence)].slice(0, 3).join('; ')}.` }
         : { passed: false, evidence: 'No formatter configuration detected.' };

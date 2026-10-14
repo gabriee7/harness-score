@@ -1,10 +1,10 @@
 import type { ScanContext } from '../src/index.js';
 
 /** In-memory ScanContext for unit-testing individual checks. */
-export function fakeContext(files: Record<string, string>): ScanContext {
+export function fakeContext(files: Record<string, string>, root = '/fake'): ScanContext {
   const paths = Object.keys(files).sort();
   return {
-    root: '/fake',
+    root,
     files: paths,
     truncated: false,
     has: (p) => Object.hasOwn(files, p),

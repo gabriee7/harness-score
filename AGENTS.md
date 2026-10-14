@@ -2,33 +2,45 @@
 
 ## What this is
 
-A monorepo shipping four artifacts about harness engineering for Cursor:
-the guide (VitePress → GitHub Pages), the deterministic `harness-score` CLI,
-the Cursor Marketplace plugin, and a GitHub Action. The repo dogfoods its own
-scanner: it must always score **L4** (`npm run scan`).
+A monorepo shipping AI coding harness engineering as a product: a guide
+(VitePress → GitHub Pages), the deterministic, harness-agnostic
+`harness-score` CLI, a growing family of thin per-tool plugins under
+`plugins/` (Cursor is the flagship/most fully-developed target; see
+`PLUGINS-ROADMAP.md` for the others), and a GitHub Action. The repo
+dogfoods its own scanner: it must always score **L4** (`npm run scan`).
 
 ## Layout
 
 - `packages/cli/` — the scanner. TypeScript, ESM, **zero runtime deps**.
-  - `src/checks/` — one file per dimension (see `.cursor/rules/checks.mdc`)
-  - `src/score.ts` — the maturity rubric (levels L0–L4)
+  - `packages/cli/src/checks/` — one file per dimension (see `.cursor/rules/checks.mdc`)
+  - `packages/cli/src/score.ts` — the maturity model (levels L0–L4)
 - `docs/` — the VitePress guide. `docs/guide/measure-and-improve.md` holds
   the check catalog with one `{#<check-id>}` anchor per check.
-- `plugin/` — Cursor plugin (`.cursor-plugin/plugin.json`, command, skill).
+- `plugins/` — one directory per tool (`cursor/`, `claude-code/`, …), plus
+  `shared/` holding the single prose source templated into each
+  (`npm run plugins:generate`, checked by `npm run plugins:sync-check`).
+  Root `.claude-plugin/marketplace.json` lists the Claude Code entry.
 - `action/` — composite GitHub Action wrapping the CLI.
 - `fixtures/level-0..4/` — sample repos pinned to each maturity level by
   tests. Changing a check usually changes a fixture.
 
+Project-local agent skill:
+
+- `.agents/skills/pr-release-audit/SKILL.md` — complete PR/release audit,
+  including current official vendor documentation, site/docs parity, release
+  metadata, and explicit contributor credit. Use it for PR and release work;
+  its release-note and attribution gates are mandatory.
+
 ## Build & test
 
-- `npm test` — builds the CLI (`tsup`), typechecks `src/` and the
-  packaging-level consumer smoke test (`test/types/smoke.ts`, imports from
+- `npm test` — builds the CLI (`tsup`), typechecks `packages/cli/src/` and the
+  packaging-level consumer smoke test (`packages/cli/test/types/smoke.ts`, imports from
   `dist/`, not `src/`), then runs vitest.
 - `npm run lint` — Biome (lints + checks formatting).
 - `npm run scan` — self-audit; must report L4.
 - `npm run docs:build` — builds the guide; must pass (dead links fail it).
-- `npm run bench` (in `packages/cli/`) — scan-time benchmark against a
-  synthetic large repo; use it before/after touching `scan.ts`.
+- `npm run bench` — scan-time benchmark against a synthetic large repo; use it
+  before/after touching `packages/cli/src/scan.ts`.
 - Tests MUST pass before any commit.
 
 ## Non-negotiable conventions
@@ -37,11 +49,11 @@ scanner: it must always score **L4** (`npm run scan`).
   no `Date.now()`-dependent output. Filesystem reads and parsing only.
 - `packages/cli` keeps **zero runtime dependencies** (fast `npx`, no supply
   chain surface). Dev dependencies are fine.
-- The rubric lives in three places that must change together:
-  `src/score.ts` (implementation), `docs/guide/maturity-model.md` (levels
+- The maturity model lives in three places that must change together:
+  `packages/cli/src/score.ts` (implementation), `docs/guide/maturity-model.md` (levels
   + dimension point totals), `docs/guide/measure-and-improve.md` (check
   catalog). `packages/cli/test/docs.test.ts` and
-  `packages/cli/test/rubric-sync.test.ts` enforce that check IDs, points,
+  `packages/cli/test/maturity-sync.test.ts` enforce that check IDs, points,
   dimension totals, and level thresholds all stay in sync across every one
   of those three files — not just anchors in the check catalog.
 - Check IDs (`CTX-01`, …) are public API: never renumber or reuse them.
@@ -51,6 +63,21 @@ scanner: it must always score **L4** (`npm run scan`).
   change, not a drive-by tweak.
 - User-facing changes get a changeset (`npm run changeset` at the repo
   root) in the same PR — see `RELEASING.md`.
+- **Credit issue reporters and external contributors.** When a fix closes a
+  community-reported bug or lands work suggested in an issue, name the reporter
+  in the PR body, the changeset (per `RELEASING.md`), and the eventual release
+  notes — even if they did not open the PR. Use their public GitHub handle; do
+  not invent attribution.
+- **Public GitHub communication is English.** PR and issue comments, review
+  bodies, and maintainer replies on this repository must be written in English,
+  even when a contributor wrote in another language. (You may use another
+  language in private chat elsewhere.) Changesets and release-note text are
+  English unless a maintainer explicitly requests otherwise — see
+  `RELEASING.md` and `CONTRIBUTING.md`.
+- **Fix external PRs on the contributor's branch.** When finishing or
+  correcting someone else's open PR, commit and push to **that PR's head
+  branch** (usually on their fork). Do not land the work on local `main`
+  ahead of `origin/main`; merge through GitHub after review.
 
 ## Do not touch
 

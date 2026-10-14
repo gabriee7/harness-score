@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  type GateMode,
+  parseScopeFlagList,
+  type ResolvedScanConfig,
+  resolveScanConfig,
+  type ScopeFlag,
+} from './config.js';
 import { computeDiff } from './diff.js';
 import { renderBadge } from './report/badge.js';
 import { renderMarkdown } from './report/markdown.js';
 import { renderTerminal } from './report/terminal.js';
-import { createScanContext } from './scan.js';
 import { buildReport, TOOL_VERSION } from './score.js';
 import type { Report } from './types.js';
+import { formatIncompleteReason, reportScopeIsComplete, reportVerdict } from './verdict.js';
 
 const HELP = `harness-score — deterministic harness-maturity scanner for AI-assisted repositories
 
@@ -18,11 +25,19 @@ Options:
   --json               Print the full report as JSON instead of the terminal view
   --md <file|->        Write a markdown report to <file> (or stdout with "-")
   --badge <file>       Write an SVG maturity badge to <file>
-  --min-level <0-4>    Exit with code 1 when the maturity level is below <n> (CI gate)
+  --min-level <0-4>    Exit with code 1 when the gated score is below <n> (CI gate)
   --diff <file>        Compare against a baseline report (a previous --json output)
+  --config <file>      Load scan configuration from a JSON file
+  --scope <scopes>     Include global harness scopes: user, system (comma-separated)
+  --gate <mode>        Score used for --min-level: maturity (repo-only, default) or effective
   --quiet              Suppress the terminal report
   --version            Print version
   --help               Show this help
+
+Exit codes: 0 complete/pass, 1 complete scan below --min-level, 2 invalid usage or incomplete gated scan.
+
+Configuration file (optional): .harness-score.json in the scan root.
+See the guide: https://paladini.github.io/harness-score/guide/measure-and-improve
 
 The scan is 100% deterministic: filesystem reads and parsing only.
 No LLM calls, no network, no telemetry.
@@ -38,6 +53,9 @@ interface Args {
   minLevel: number | null;
   diff: string | null;
   quiet: boolean;
+  configPath: string | null;
+  scopeFlags: ScopeFlag[] | null;
+  gate: GateMode | null;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -49,6 +67,9 @@ function parseArgs(argv: string[]): Args {
     minLevel: null,
     diff: null,
     quiet: false,
+    configPath: null,
+    scopeFlags: null,
+    gate: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -83,6 +104,30 @@ function parseArgs(argv: string[]): Args {
         const value = argv[++i];
         if (!value) return fail('--diff requires a path to a baseline JSON report');
         args.diff = value;
+        break;
+      }
+      case '--config': {
+        const value = argv[++i];
+        if (!value) return fail('--config requires a file path');
+        args.configPath = value;
+        break;
+      }
+      case '--scope': {
+        const value = argv[++i];
+        if (!value) return fail('--scope requires a comma-separated list (user, system)');
+        try {
+          args.scopeFlags = parseScopeFlagList(value);
+        } catch (error) {
+          return fail(String(error).replace(/^Error: /, ''));
+        }
+        break;
+      }
+      case '--gate': {
+        const value = argv[++i];
+        if (value !== 'maturity' && value !== 'effective') {
+          return fail('--gate must be "maturity" or "effective"');
+        }
+        args.gate = value;
         break;
       }
       case '--min-level': {
@@ -122,13 +167,47 @@ function looksLikeReport(value: unknown): value is Report {
   );
 }
 
+function gatedLevel(report: Report): Report['level'] {
+  if (report.gate === 'effective') return report.effective.level;
+  return report.level;
+}
+
+function requestedVerdictScopes(report: Report): Array<'maturity' | 'effective'> {
+  const scopes: Array<'maturity' | 'effective'> = ['maturity'];
+  if (report.gate === 'effective' || report.scopes.effective.some((scope) => scope !== 'repo')) {
+    scopes.push('effective');
+  }
+  return scopes;
+}
+
+function incompleteRequestedScopes(report: Report): Array<'maturity' | 'effective'> {
+  return requestedVerdictScopes(report).filter((scope) => !reportScopeIsComplete(report, scope));
+}
+
+function gateExitCode(report: Report, minLevel: number | null): 0 | 1 | 2 {
+  if (!reportScopeIsComplete(report, report.gate)) return 2;
+  if (minLevel !== null && gatedLevel(report).index < minLevel) return 1;
+  return 0;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const rootAbs = path.resolve(args.root);
 if (!fs.existsSync(rootAbs) || !fs.statSync(rootAbs).isDirectory()) {
   fail(`not a directory: ${rootAbs}`);
 }
 
-const report = buildReport(createScanContext(rootAbs));
+let scanConfig: ResolvedScanConfig;
+try {
+  scanConfig = resolveScanConfig(rootAbs, {
+    configPath: args.configPath,
+    scopeFlags: args.scopeFlags,
+    gate: args.gate,
+  });
+} catch (error) {
+  fail(String(error).replace(/^Error: /, ''));
+}
+
+const report = buildReport(rootAbs, scanConfig);
 
 let baseline: Report | null = null;
 let diff: ReturnType<typeof computeDiff> | null = null;
@@ -146,6 +225,12 @@ if (args.diff !== null) {
     );
   }
   baseline = parsed;
+  if (!reportScopeIsComplete(baseline, 'maturity')) {
+    fail('--diff: baseline maturity report is incomplete and cannot be compared.');
+  }
+  if (!reportScopeIsComplete(report, 'maturity')) {
+    fail('--diff: current maturity report is incomplete and cannot be compared.');
+  }
   diff = computeDiff(baseline, report);
 }
 
@@ -171,10 +256,25 @@ if (args.badge !== null) {
   if (!args.quiet) process.stderr.write(`badge written to ${args.badge}\n`);
 }
 
-if (args.minLevel !== null && report.level.index < args.minLevel) {
+const incompleteScopes = incompleteRequestedScopes(report);
+for (const scope of incompleteScopes) {
+  const reasons = reportVerdict(report, scope).reasons.map(formatIncompleteReason).join('; ');
   process.stderr.write(
-    `harness-score: maturity L${report.level.index} is below required L${args.minLevel} — ` +
-      `missing: ${report.level.nextLevelGaps.join('; ') || 'see failed checks'}\n`,
+    `harness-score: ${scope} scan is incomplete; no authoritative ${scope} verdict is available` +
+      `${reasons ? `: ${reasons}` : '.'}\n`,
+  );
+}
+
+const exitCode = gateExitCode(report, args.minLevel);
+if (exitCode === 2) {
+  process.exit(2);
+}
+
+if (exitCode === 1 && args.minLevel !== null) {
+  const level = gatedLevel(report);
+  process.stderr.write(
+    `harness-score: ${report.gate} L${level.index} is below required L${args.minLevel} — ` +
+      `missing: ${level.nextLevelGaps.join('; ') || 'see failed checks'}\n`,
   );
   process.exit(1);
 }

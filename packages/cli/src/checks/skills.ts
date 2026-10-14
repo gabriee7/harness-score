@@ -13,14 +13,15 @@ export const skillChecks: Check[] = [
     title: 'At least one agent skill defined',
     points: 4,
     remediation:
-      'Create a SKILL.md under your tool skills directory (.cursor/skills/, .claude/skills/, or .agents/skills/) packaging a procedural workflow the agent should follow on demand.',
+      'Create a SKILL.md under your tool skills directory (.cursor/skills/, .claude/skills/, .devin/skills/, or .agents/skills/) packaging a procedural workflow the agent should follow on demand.',
     run(ctx) {
       const skills = collectSkills(ctx);
       return skills.length > 0
         ? { passed: true, evidence: summarizeArtifacts(skills, 'skill(s)') }
         : {
             passed: false,
-            evidence: 'No SKILL.md under .cursor/skills/, .claude/skills/, or .agents/skills/.',
+            evidence:
+              'No SKILL.md under .cursor/skills/, .claude/skills/, .devin/skills/, .agents/skills/, or a plugin skills/ directory at the scan root.',
           };
     },
   },
@@ -60,7 +61,7 @@ export const skillChecks: Check[] = [
         : {
             passed: false,
             evidence:
-              'No command/workflow files found (.cursor/commands, .windsurf/workflows, .claude/commands, .continue/prompts, …).',
+              'No command/workflow files found (.cursor/commands, .windsurf/workflows, .claude/commands, .continue/prompts, plugin commands/, …).',
           };
     },
   },

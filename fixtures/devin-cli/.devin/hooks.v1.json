@@ -1,0 +1,23 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "exec",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./scripts/check-command.sh"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "./scripts/format-after-tool.sh"
+        }
+      ]
+    }
+  ]
+}

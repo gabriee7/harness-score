@@ -1,10 +1,10 @@
 {
   "name": "harness-score",
-  "version": "0.3.0",
-  "description": "Deterministic harness-maturity scanner for AI-assisted repositories (Cursor-first). Zero LLM calls, zero network, zero runtime dependencies.",
+  "version": "1.8.2",
+  "description": "Deterministic AI coding harness-maturity scanner for AI-assisted repositories (Cursor-flagship, expanding to other AI-first dev tools). Zero LLM calls, zero network, zero runtime dependencies.",
   "type": "module",
   "bin": {
-    "harness-score": "./dist/cli.js"
+    "harness-score": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -44,7 +44,7 @@
   "homepage": "https://paladini.github.io/harness-score/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/paladini/harness-score.git",
+    "url": "git+https://github.com/paladini/harness-score.git",
     "directory": "packages/cli"
   },
   "engines": {
@@ -52,7 +52,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^3.0.0",
     "tsup": "^8.5.1",
     "typescript": "^5.6.0",

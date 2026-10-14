@@ -20,22 +20,35 @@ import {
   type DimensionInfo,
   type DimensionScore,
   DOCS_BASE_URL,
+  formatIncompleteReason,
   LEVEL_NAMES,
   LEVEL_REQUIREMENTS,
   type LevelInfo,
+  PRESET_REGISTRY,
   type Report,
   type ReportDiff,
   renderBadge,
   renderMarkdown,
   renderTerminal,
+  reportScopeIsComplete,
+  reportVerdict,
+  resolveSeverities,
   type ScanContext,
+  type ScanDiagnostic,
+  type ScanIncompleteReason,
+  type ScanVerdict,
+  type ScanVerdictStatus,
+  type Severity,
   score,
+  TOOL_DISPLAY_NAMES,
   TOOL_VERSION,
+  type ToolId,
+  toolDisplayName,
 } from '../../dist/index.js';
 
 const checks: Check[] = ALL_CHECKS;
 const ctx: ScanContext = createScanContext('.');
-const built: Report = buildReport(ctx);
+const built: Report = buildReport('.');
 const scored: Report = score('.');
 const diff: ReportDiff = computeDiff(built, scored);
 const badge: string = renderBadge(scored);
@@ -48,8 +61,25 @@ const dimensionScore: DimensionScore = scored.dimensions[0]!;
 const levelInfo: LevelInfo = scored.level;
 const checkOutcome: CheckOutcome = { passed: true, evidence: 'x' };
 const checkResult: CheckResult = scored.checks[0]!;
+const diagnostic: ScanDiagnostic = { code: 'future-event', message: 'x', source: '.claude/settings.json' };
+const incompleteReason: ScanIncompleteReason = { code: 'depth-limit', path: 'deep', limit: 10 };
+const unreadablePathReason: ScanIncompleteReason = { code: 'unreadable-path', path: 'AGENTS.md' };
+const outsideRootSymlinkReason: ScanIncompleteReason = {
+  code: 'outside-root-symlink',
+  path: 'shared/AGENTS.md',
+};
+const verdict: ScanVerdict = reportVerdict(scored, 'maturity');
+const verdictStatus: ScanVerdictStatus = verdict.status;
+const complete: boolean = reportScopeIsComplete(scored, 'maturity');
+const formattedReason: string = formatIncompleteReason(incompleteReason);
 const checkDelta: CheckDelta | undefined = diff.checksChanged[0];
 const dimensionDelta: DimensionDelta = diff.dimensions[0]!;
+const toolId: ToolId = 'devin';
+const toolName: string = toolDisplayName(toolId);
+const devinDisplayName: string = TOOL_DISPLAY_NAMES.devin;
+const severity: Severity = scored.checks[0]!.severity;
+const severities = resolveSeverities({ extends: [], rules: {} });
+const presets = PRESET_REGISTRY;
 
 // Referenced only so the compiler treats every import as used; this file is
 // never executed, only type-checked.
@@ -68,10 +98,25 @@ void [
   levelInfo,
   checkOutcome,
   checkResult,
+  diagnostic,
+  incompleteReason,
+  unreadablePathReason,
+  outsideRootSymlinkReason,
+  verdict,
+  verdictStatus,
+  complete,
+  formattedReason,
   checkDelta,
   dimensionDelta,
+  toolId,
+  toolName,
+  devinDisplayName,
+  severity,
+  severities,
+  presets,
   DOCS_BASE_URL,
   LEVEL_NAMES,
   LEVEL_REQUIREMENTS,
+  TOOL_DISPLAY_NAMES,
   TOOL_VERSION,
 ];

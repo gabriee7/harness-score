@@ -1,4 +1,5 @@
 import type { Report } from '../types.js';
+import { reportScopeIsComplete } from '../verdict.js';
 
 const H = 20;
 const R = 3;
@@ -11,6 +12,7 @@ const PAD = 7;
 const LABEL_SEG = 76;
 /** Right segment fits L4 — keep in sync with generate.mjs BADGE_VALUE_SEG. */
 const VALUE_SEG = 36;
+const INCOMPLETE_VALUE_SEG = 64;
 const BAR_X = 10;
 const LABEL_X = 28;
 const VALUE_X = LABEL_SEG + PAD;
@@ -42,8 +44,8 @@ function badgeBody(total: number, value: string): string {
  * shields.io pattern: 20px height, 11px Verdana, fixed width (level only).
  */
 export function renderBadge(report: Report): string {
-  const value = `L${report.level.index}`;
-  const total = LABEL_SEG + VALUE_SEG;
+  const value = reportScopeIsComplete(report, 'maturity') ? `L${report.level.index}` : 'incomplete';
+  const total = LABEL_SEG + (value === 'incomplete' ? INCOMPLETE_VALUE_SEG : VALUE_SEG);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${H}" viewBox="0 0 ${total} ${H}" role="img" aria-label="Harness Score ${value}">
   <title>Harness Score: ${value}</title>

@@ -27,19 +27,21 @@ the harness you own. Two repositories can use the exact same model and get
 wildly different results, because one has a harness that catches mistakes
 before they ship and the other has none.
 
-**Harness Score measures that harness.** Point it at any repository and get a
-maturity level (L0–L4), a 108-point breakdown across six dimensions, and the
-precise, ranked list of what to fix next — with zero LLM calls, zero network
-access, and the same result every time you run it.
+**Harness Score measures that harness — across any tool.** Point it at any
+repository using Cursor, Claude Code, Devin, Windsurf, Cline, Continue, or any other
+AI coding tool, and get a maturity level (L0–L4), a 108-point breakdown across
+six dimensions, and the precise, ranked list of what to fix next — with zero
+LLM calls, zero network access, and the same result every time you run it.
 
 ```bash
 npx harness-score
 ```
 
 ```
-  harness-score v0.3.0  ~/my-app
+  harness-score v1.0.0  ~/my-app
 
   Maturity: L2 · Guided   Score: 70/108 (65%)
+  Detected: Cursor, Claude Code
 
   Context & Guides     ████████████████░░░░  80%  16/20 pts
   Skills & Commands    █████████████░░░░░░░  65%  11/17 pts
@@ -90,7 +92,7 @@ L1. Climbing the ladder means covering a new dimension at each step.
 
 The scanner always tells you exactly which requirement blocks the *next*
 level (`To reach L3: sensors ≥ 60%; ci ≥ 50%`) — the path up is never a
-guess. Full rubric, thresholds, and rationale:
+guess. Full maturity model, thresholds, and rationale:
 **[the Maturity Model](https://paladini.github.io/harness-score/guide/maturity-model)**.
 
 ## The six dimensions
@@ -123,14 +125,49 @@ A high score means the *infrastructure* for reliable agent work exists. It's
 necessary, not sufficient — and that's the honest ceiling of what any
 deterministic scanner can claim.
 
-## The four pieces
+The repository scan walks the complete relevant filesystem tree, including
+tracked, untracked, and ignored files. It skips known dependency and generated
+directories, keeps followed symlink targets inside the scan root, and never
+reads file bodies larger than 512 KiB. An emergency fuse stops pathological
+trees above 1,000,000 files; hitting that fuse, finding an out-of-root symlink,
+or encountering an unreadable relevant path marks the affected snapshot as
+incomplete instead of publishing its score as authoritative.
+
+Repositories using [Devbox](https://www.jetify.com/docs/devbox) are supported:
+the scanner skips Devbox's generated `.devbox/` directory, including its
+`.devbox/bin/devbox` symlink and generated virtual-environment state. Project
+configuration such as `devbox.json`, `devbox.lock`, and `devbox.d/` remains
+visible to the scan. Devbox is an environment manager, not a detected AI
+harness, so it does not add maturity points or appear in `detectedHarnesses`.
+
+## Stability & versioning
+
+As of **v1.0.0**, Harness Score follows [semantic versioning](https://semver.org/)
+with a concrete definition of what counts as public API:
+
+- **Check IDs** (`CTX-01` … `HYG-08`) are stable identifiers. A check's ID
+  never changes meaning; removing or repurposing one is a **major** change.
+- **The `Report` JSON shape** — everything `--json` emits and the typed
+  programmatic API exports — only gains fields in **minor** versions;
+  removing or renaming a field is **major**.
+- **CLI flags and exit codes** (`0` pass, `1` gate failure, `2` usage error or incomplete scan)
+  are stable; removals are **major**.
+- **Maturity model evolution** (new checks, point totals, level thresholds)
+  ships in **minor** versions — it changes what a repository *scores*, not
+  how you *consume* the tool. `--diff` flags it explicitly via
+  `maturityModelChanged`, so baselines are never silently misread.
+- **The determinism invariants** — zero LLM calls, zero network access, zero
+  runtime dependencies, same input ⇒ same output — are permanent commitments,
+  not version-scoped promises.
+
+## The pieces
 
 | Piece | What | Where |
 |---|---|---|
-| 📖 **The Guide** | Harness engineering applied to Cursor: guides (feedforward), sensors (feedback), guardrails, and the 5-level maturity model. Consolidates Martin Fowler's harness engineering articles, LangChain's harness lessons, and Cursor's own docs. | [paladini.github.io/harness-score](https://paladini.github.io/harness-score/) |
-| 🔍 **The CLI** | `npx harness-score` — 36 checks across 6 dimensions, maturity level L0–L4, JSON/markdown/badge output, `--diff` mode, `--min-level` CI gate. Zero runtime dependencies, fully-typed programmatic API. | [packages/cli](packages/cli) |
-| 🧩 **The Cursor plugin** | `/harness-audit` command + `harness-engineering` skill: audit the open workspace and let the agent fix the gaps following the guide's recipes. | [plugin](plugin) |
-| ⚙️ **The GitHub Action** | Run the scan on every push, gate on a minimum level, emit the badge. | [action](action) |
+| 📖 **The Guide** | Harness engineering for AI coding agents: guides (feedforward), sensors (feedback), guardrails, and the 5-level maturity model. Consolidates Birgitta Böckeler's harness engineering articles (on martinfowler.com), LangChain's harness lessons, and Cursor's own docs. | [paladini.github.io/harness-score](https://paladini.github.io/harness-score/) |
+| 🔍 **The CLI** | `npx harness-score` — 36 checks across 6 dimensions, maturity level L0–L4, JSON/markdown/badge output, `--diff` mode, `--min-level` CI gate. Scores harnesses for Cursor, Claude Code, Windsurf, Cline, Continue, Codex, and other tools via OR semantics. Zero runtime dependencies, fully-typed programmatic API. | [packages/cli](packages/cli) |
+| 🧩 **Editor/agent plugins** | `/harness-audit` command + `harness-engineering` skill: audit the open workspace and let the agent fix the gaps following the guide's recipes. Cursor is the flagship; Claude Code and Windsurf support in progress (see [PLUGINS-ROADMAP.md](PLUGINS-ROADMAP.md) for the rest). | [plugins](plugins) |
+| ⚙️ **The GitHub Action** | Run the scan on every push, gate on a minimum level, emit the badge. Multi-harness aware. | [action](action) |
 
 ## Show your maturity in your README
 
@@ -148,7 +185,7 @@ The pill looks the same whether CI regenerates it or you pin a static file.
 
 ```yaml
 # .github/workflows/harness.yml
-- uses: paladini/harness-score/action@main
+- uses: paladini/harness-score@v1
   with: { badge: 'harness-badge.svg' }
 # publish harness-badge.svg to a badges branch or GitHub Pages, then:
 ```
@@ -227,10 +264,30 @@ harness-score --min-level 3
 Or in CI:
 
 ```yaml
-- uses: paladini/harness-score/action@main
+- uses: paladini/harness-score@v1
   with:
     min-level: '3'
 ```
+
+## Team customization
+
+Some checks don't apply to every team for structural reasons — a policy
+that forbids local hook scripts, for instance. `.harness-score.json`
+(optional, at the repo root) supports two ESLint-style keys so a team can
+say so without forking the model:
+
+```json
+{
+  "extends": ["no-hooks"],
+  "rules": { "HYG-05": "off" }
+}
+```
+
+Excluded checks are removed from both sides of the score's fraction — never
+penalized, never silently hidden. Every exclusion shows up in the terminal,
+Markdown, and JSON output, and three checks that detect actively leaked
+credentials can never be excluded, from either a rule or a preset. Full
+story: **[Metrics & Codes → Team customization](https://paladini.github.io/harness-score/guide/metrics-and-codes#team-customization)**.
 
 ## A worked improvement plan
 
@@ -268,7 +325,7 @@ npm run docs:dev    # guide dev server
 npm run bench -w harness-score   # scan-time benchmark against a synthetic large repo
 ```
 
-Monorepo layout, conventions, and the rubric-sync rule live in
+Monorepo layout, conventions, and the maturity-sync rule live in
 [AGENTS.md](AGENTS.md) — written for agents, useful for humans.
 
 ## Contributing
@@ -276,8 +333,8 @@ Monorepo layout, conventions, and the rubric-sync rule live in
 Issues and pull requests are welcome — new checks, new language/tool
 recognition (a linter or test runner the scanner doesn't know about yet),
 docs fixes, bug reports against real-world repositories. Proposing a new
-check or a rubric change? Use the
-**[Rubric change](https://github.com/paladini/harness-score/issues/new?template=rubric_change.yml)**
+check or a check change? Use the
+**[Check change](https://github.com/paladini/harness-score/issues/new?template=check_change.yml)**
 issue template — it's the highest-value contribution and the one most
 likely to need agreement up front, since it changes what every existing
 repository scores. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full
@@ -287,10 +344,11 @@ instead of filing a public issue.
 
 ## Roadmap
 
-What's already planned for the next version lives in
-[ROADMAP.md](ROADMAP.md), including two checks identified during real-world
-testing that the rubric doesn't yet reward: custom subagent definitions and
-a positive check for a properly configured `.cursor/mcp.json`.
+What's next lives in [ROADMAP.md](ROADMAP.md): a `harness-score init`
+scaffold command that turns the diagnostic into a fixer, SARIF output for
+GitHub code-scanning integration, larger real-world corpus analyses to keep
+calibrating the maturity model, and first-class plugins for more tools
+beyond Cursor and Claude Code ([PLUGINS-ROADMAP.md](PLUGINS-ROADMAP.md)).
 
 ## License
 

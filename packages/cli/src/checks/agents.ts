@@ -20,7 +20,8 @@ export const agentChecks: Check[] = [
         ? { passed: true, evidence: summarizeArtifacts(agents, 'subagent(s)') }
         : {
             passed: false,
-            evidence: 'No subagent files found (.cursor/agents, .claude/agents, or .opencode/agents).',
+            evidence:
+              'No subagent files found (.cursor/agents, .claude/agents, .opencode/agents, or plugin agents/).',
           };
     },
   },

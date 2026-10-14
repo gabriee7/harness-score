@@ -4,6 +4,8 @@ Cursor exposes more harness machinery than any other mainstream AI editor.
 This chapter is the map: every artifact, where it lives, and what job it does
 in the control system.
 
+> **Note:** Harness Score supports multiple tools (Claude Code, Windsurf, Cline, Continue, and others) via OR semantics. This chapter focuses on Cursor as the flagship example. See [Multi-Harness Support](./multi-harness) for how other tools are recognized and scored.
+
 ## The artifacts at a glance
 
 | Artifact | Path | Family | Loaded |
@@ -19,6 +21,13 @@ in the control system.
 
 Everything lives in the repository, which is the point: **the harness ships
 with the code**, is versioned with the code, and is reviewed like code.
+
+Cursor also supports **user-level** artifacts (`~/.cursor/skills`,
+`~/.cursor/mcp.json`, global commands) that never appear in git. They do
+not affect your **maturity** score (CI stays reproducible) but can raise your
+**effective** score when you enable `--scope user` — see
+[Multi-Harness — project vs global](./multi-harness#project-vs-user-global-harness)
+and [Metrics & Codes](./metrics-and-codes#scopes).
 
 ## AGENTS.md — the front door
 
@@ -176,6 +185,11 @@ repositories** — including the
 [Harness Score plugin](/guide/measure-and-improve#the-cursor-plugin) that
 audits the very artifacts this chapter described (installable from its
 repo directory today; its Marketplace listing is pending review).
+
+When you scan a **plugin repository** (manifest at the scan root), `harness-score`
+maps default plugin `skills/`, `commands/`, `agents/`, and `hooks/hooks.json`
+to the same checks as `.cursor/...` layout — see
+[chapter 8 — plugin layouts](./measure-and-improve#skl-01).
 
 ## Choosing the right mechanism
 

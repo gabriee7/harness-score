@@ -4,12 +4,12 @@ The sources this guide consolidates, roughly in order of influence.
 
 ## Harness engineering
 
-- **[Harness engineering for coding agent users](https://martinfowler.com/articles/harness-engineering.html)** — martinfowler.com, April 2026.
+- **[Harness engineering for coding agent users](https://martinfowler.com/articles/harness-engineering.html)** — Birgitta Böckeler, martinfowler.com, April 2026.
   The article that framed the discipline for teams *using* agents: guides vs.
   sensors, computational vs. inferential checks, the three regulation
   dimensions (maintainability, architecture fitness, behavior), "keep quality
   left", and harnessability as a property of codebases.
-- **[Harness Engineering — first thoughts](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html)** — the earlier memo in the
+- **[Harness Engineering — first thoughts](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html)** — Birgitta Böckeler's earlier memo in the
   *Exploring Gen AI* series where the term takes shape.
 - **[Improving Deep Agents with harness engineering](https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering)** — LangChain, 2026.
   The empirical case: 52.8% → 66.5% on Terminal Bench 2.0 without touching
@@ -19,7 +19,9 @@ The sources this guide consolidates, roughly in order of influence.
   open-source "batteries-included agent harness"; useful to read as a
   concrete harness implementation.
 
-## Cursor documentation
+## Tool documentation
+
+### Cursor (flagship)
 
 - **[Rules](https://cursor.com/docs/rules)** — `.cursor/rules/*.mdc`,
   frontmatter, AGENTS.md.
@@ -32,6 +34,16 @@ The sources this guide consolidates, roughly in order of influence.
 - **[Cursor Marketplace](https://cursor.com/marketplace)** and the
   **[plugin spec repository](https://github.com/cursor/plugins)** — how
   plugins are packaged, reviewed, and distributed.
+
+### Claude Code, Devin, Windsurf, and others
+
+See [Multi-Harness Support](/guide/multi-harness) for how Harness Score recognizes equivalent
+artifacts from Claude Code (`.claude/agents/`, hooks), Devin (`.devin/skills/` and hooks in
+`.devin/hooks.v1.json` or `.devin/config.json`), Windsurf (`.windsurf/rules/`), Cline
+(`.clinerules/`), Continue, Codex, and other tools.
+
+- **[Devin CLI extensibility](https://docs.devin.ai/cli/extensibility)** — skills, hooks, and
+  `.devin/config.json` layout (official reference for event maps and handler shapes).
 
 ## Adjacent work
 

@@ -1,20 +1,24 @@
 # Roadmap
 
-Harness Score is pre-1.0 and the rubric is expected to keep evolving as we
-test it against real repositories. This document tracks what's already
+Harness Score is **1.0**: check IDs, the `Report` JSON shape, CLI flags, and
+exit codes are stable public API under semantic versioning (see the
+[Stability & versioning](README.md#stability--versioning) statement). The
+maturity model itself keeps evolving as we test it against real
+repositories — model changes ship in minor versions and are flagged by
+`--diff`'s `maturityModelChanged`. This document tracks what's already
 planned so contributors (and future sessions) don't duplicate discovery
 work. It is not a promise of dates — just of intent and design direction.
 
-For the invariants any rubric change must respect, see
+For the invariants any check change must respect, see
 [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md#the-three-invariants-that-matter-most).
 
-## Why the rubric still moves
+## Why the maturity model still moves
 
 `v0.1.2` was a real-world test against
 [tech-leads-club/fakeflix](https://github.com/tech-leads-club/fakeflix), a
 genuinely excellent AI-harness example repo. That test fixed several parser
 bugs (frontmatter block scalars, hook tokenization, monorepo test-runner
-detection, symlink traversal) but also surfaced two things the rubric
+detection, symlink traversal) but also surfaced two things the maturity model
 **didn't reward at all**, even though fakeflix uses them heavily and our own
 guide already documented them as core Cursor harness artifacts. Both shipped
 in `v0.2.0`.
@@ -36,7 +40,7 @@ credential-shaped field (token/key/secret/password) uses `${ENV_VAR}`
 interpolation — the positive complement to `HYG-04`'s negative gate.
 Folded into **Hygiene & Safety** (grown 20 → 23 pts).
 
-**Total rubric points moved 100 → 108.** Rather than trimming four unrelated
+**Total maturity model points moved 100 → 108.** Rather than trimming four unrelated
 dimensions to preserve the round "100" number, only the two dimensions that
 gained checks grew — this kept the change scoped to
 `checks/agents.ts`, `checks/hygiene.ts`, and their two dimensions' entries
@@ -46,7 +50,7 @@ percentage-based per dimension (and for the L4 total gate), so no threshold
 formula changed — only fixtures needed new example artifacts to keep their
 intended level. `fixtures/level-3` and `level-4` gained a `.cursor/agents/`
 subagent; `level-4` also gained a well-formed `.cursor/mcp.json`. This
-repository's own `.cursor/agents/rubric-auditor.md` and `.cursor/mcp.json`
+repository's own `.cursor/agents/maturity-model-auditor.md` and `.cursor/mcp.json`
 keep it dogfooding **L4**. The stale, copy-pasted `fixtures/level-2..4`
 READMEs (all describing level-1 content) were fixed while fixtures were
 being touched anyway.
@@ -66,7 +70,7 @@ touchpoint that makes a CI tool sticky.
   delta, score delta, per-dimension deltas, and which checks flipped
   pass/fail. Pure comparison of two already-computed `Report` objects, no
   new runtime deps, fully deterministic. Checks present in `current` but
-  absent from `baseline` (a rubric change between scans) are ignored for
+  absent from `baseline` (a check change between scans) are ignored for
   the pass/fail delta rather than counted as a regression.
 - CLI flag `--diff <baseline.json>` (see
   [Tracking score over time](docs/guide/measure-and-improve.md#diff-mode)),
@@ -79,11 +83,35 @@ touchpoint that makes a CI tool sticky.
   repeated pushes update one comment). Requires the consumer to grant
   `pull-requests: write` — documented in `action/README.md`, not assumed.
 
+## Shipped in v1.0.0
+
+### General-purpose positioning + API stability — done
+
+The v1.0.0 release marks the project's transition from "Cursor-focused tool"
+to "general-purpose harness maturity platform," and freezes the public
+surface under semver. The multi-tool work landed incrementally — the engine
+in v0.4.0 (OR-semantics scanning), equivalence fixes in v0.5.0, docs/site
+messaging and the "Multi-Harness Support" chapter in v0.5.0–v0.6.0, detected
+harnesses surfaced in reports in v0.6.0 — and v1.0.0 capped it with:
+
+- **A public stability statement** (README "Stability & versioning"): check
+  IDs, `Report` JSON shape, CLI flags, and exit codes are stable API;
+  maturity-model evolution ships in minors and is flagged by
+  `maturityModelChanged`; the determinism invariants (zero LLM, zero
+  network, zero runtime deps) are permanent.
+- **Supported-versions policy** updated in [SECURITY.md](SECURITY.md) for
+  the semver era.
+- **Docs and README** scrubbed of pre-1.0 language; landing page, guide, and
+  plugin READMEs updated.
+
+No check changes, no maturity-model shifts — the score a repository gets
+from v1.0.0 is identical to v0.6.0.
+
 ## Shipped in v0.4.0
 
 ### Distribution, type packaging, scan performance, and community infra — done
 
-Not a rubric change (no checks added, no points moved) — a maintenance pass
+Not a check change (no checks added, no points moved) — a maintenance pass
 on the CLI's packaging and the contribution process itself:
 
 - **Smaller, bundled `dist/`.** The build moved from plain `tsc` (36
@@ -102,14 +130,14 @@ on the CLI's packaging and the contribution process itself:
   (`npm run bench`, new). Deliberately did **not** parallelize file reads:
   `Check.run()`/`ScanContext.read()` are synchronous public API, and
   making them async would be a breaking change, not a perf tweak.
-- **Rubric doc-sync gap closed.** `maturity-model.md`'s dimension-points
+- **Maturity model doc-sync gap closed.** `maturity-model.md`'s dimension-points
   table and `LEVEL_REQUIREMENTS` thresholds were only mirrored by hand
-  ("change both together" in a comment); `rubric-sync.test.ts` now
+  ("change both together" in a comment); `maturity-sync.test.ts` now
   enforces both in CI, the same way `docs.test.ts` already enforced
   `measure-and-improve.md`.
 - **Formalized the contribution process.** A dedicated
-  `.github/ISSUE_TEMPLATE/rubric_change.yml` for add/edit/remove-a-check
-  proposals, `.github/CODEOWNERS` (routes checks/rubric/release-surface
+  `.github/ISSUE_TEMPLATE/check_change.yml` for add/edit/remove-a-check
+  proposals, `.github/CODEOWNERS` (routes checks/maturity-model/release-surface
   PRs for review), `.github/dependabot.yml` (weekly devDependency +
   Actions updates — `packages/cli` still has zero runtime dependencies),
   and changesets (`npm run changeset` / `npm run version-packages`) for a
@@ -127,12 +155,49 @@ on the CLI's packaging and the contribution process itself:
 Both `v0.2.0` features added a **positively-weighted check**, which shifts
 the earned/max ratio for every dimension total and therefore every existing
 fixture under `fixtures/level-0..4/`. That's why they shipped together as a
-deliberate rubric-change PR rather than a drive-by fix — see the "Shipped in
+deliberate check-change PR rather than a drive-by fix — see the "Shipped in
 v0.2.0" section above for what that PR touched. Any future check addition
 should expect the same shape of change: check → dimension total → both docs
 pages → all five fixtures → this repo's own dogfood artifacts if needed.
 
-## Also under consideration (not yet scheduled)
+## Shipped in v0.5.0
+
+### Multi-harness equivalence fixes — done
+
+After field-testing v0.4.0 against a corpus of differently-shaped repositories,
+three equivalence gaps were found and closed:
+
+- **Hooks regression:** A hook-less `.claude/settings.json` (permissions only)
+  no longer shadows a fully-configured `.cursor/hooks.json` — of all hooks
+  configs, the one with the most registered events wins.
+- **CTX-04 path fix:** `.continue/rules/*.md` without frontmatter now pass at
+  the repository root (previously only in subdirectories).
+- **CTX-03/04/05 nested files:** `AGENTS.md`/`CLAUDE.md`/`GEMINI.md` in
+  subdirectories now count as scoped rules — a fully-harnessed Claude Code
+  repo can progress past L1 without `.cursor/` paths.
+
+Also shipped: comprehensive multi-harness docs (new "Multi-Harness Support"
+chapter), site messaging updates (docs.index, nav, HomeLanding.vue), and
+README clarifications about OR-semantic scoring across tools.
+
+## Shipped in v0.6.0
+
+### Detected harnesses in human-readable reports — done
+
+The `detectedHarnesses` array (in `--json` since v0.4.0) is now surfaced in
+the terminal report (`Detected: Cursor, Claude Code` under the maturity
+header) and the markdown report (`**Detected harnesses:**`). Display names
+live in `TOOL_DISPLAY_NAMES` in the harness registry, exported publicly with
+`toolDisplayName()` and the `ToolId` type. Empty list renders nothing, so
+zero-harness output is unchanged. Shipped alongside a Cursor plugin `0.1.1`
+content-only bump (terminology + `plugins/` move regularized).
+
+Known model note carried forward (not addressed here): `detectHarnesses`
+reports antigravity+codex together for shared `.agents/` paths, and
+`fixtures/`-style example directories inflate a root repo's detected list via
+`(^|\/)` path matching — both candidates for a post-1.0 accuracy pass.
+
+## Next up (post-1.0, not yet scheduled)
 
 - **`harness-score init`** — a scaffold command that generates starter
   artifacts (an `AGENTS.md`, a Cursor rule, a `hooks.json`) for the
@@ -141,23 +206,25 @@ pages → all five fixtures → this repo's own dogfood artifacts if needed.
   own design session (deterministic templates only, no LLM — keeps the
   zero-runtime-deps and no-network invariants).
 - **SARIF output** for GitHub code-scanning tab integration.
+- **Real-world corpus analyses** — scanning a large corpus of public
+  repositories to calibrate level thresholds and check weights against how
+  teams actually build harnesses (the v0.5.0 synthetic 8-repo corpus proved
+  the method; the next step is scale). Expect published findings, not just
+  internal calibration.
 - Recognizing more linters/test runners/type checkers as the ecosystem
   detector (`detectEcosystems`) sees them in the wild — this is the kind of
   contribution that needs no design discussion, just a PR (see
   [CONTRIBUTING.md](CONTRIBUTING.md)).
-- Expanding beyond Cursor-specific artifacts to recognize equivalent
-  constructs in other agent harnesses (e.g. Claude Code's own
-  `.claude/agents/`, hooks, and skills) without diluting the Cursor-first
-  focus of the guide — needs its own branding/scope decision before design.
 - Shipping harness-score as a plugin for other tools (Claude Code, Windsurf,
   Codex CLI, VS Code), not just Cursor, all published from this same repo —
-  planned in [PLUGINS-ROADMAP.md](PLUGINS-ROADMAP.md), not yet scheduled.
+  planned in [PLUGINS-ROADMAP.md](PLUGINS-ROADMAP.md), in progress (Claude Code
+  Phase 0 audit command shipped; full plugin suite post-v1.0).
 
 ## Proposing something new
 
-Open an issue using the **[Rubric change](https://github.com/paladini/harness-score/issues/new?template=rubric_change.yml)**
+Open an issue using the **[Check change](https://github.com/paladini/harness-score/issues/new?template=check_change.yml)**
 template for anything that adds, edits, or removes a check; the general
 **feature request** template covers everything else (CLI flags, plugin,
 Action, docs). See
 [CONTRIBUTING.md](CONTRIBUTING.md#adding-or-changing-a-check) for what a
-rubric-changing PR needs to include.
+check-changing PR needs to include.

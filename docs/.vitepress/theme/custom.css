@@ -52,3 +52,118 @@
   margin: 0.25rem 0 0;
   border-radius: 8px;
 }
+
+/* CJK + Devanagari: web fonts plus slightly taller line-height for matras and hanzi. */
+:root {
+  --vp-font-family-base: "Inter", "Noto Sans SC", "Noto Sans Devanagari", system-ui, sans-serif;
+  --hs-header-paper: #f1f4ec;
+  --hs-header-ink: #0d1b17;
+  --hs-header-line: #cbd4c7;
+  --hs-header-green: #119366;
+  --vp-nav-bg-color: var(--hs-header-paper);
+}
+
+/* Shared product header: mirrors the Harness Maturity Showcase shell. */
+.VPNav,
+.VPNavBar {
+  background: var(--hs-header-paper);
+}
+
+.VPNavBar {
+  border-bottom: 1px solid var(--hs-header-line);
+}
+
+.VPNavBar .wrapper {
+  padding: 0 32px;
+}
+
+.VPNavBar .container {
+  max-width: none;
+}
+
+.VPNavBarTitle .title {
+  gap: 10px;
+  color: var(--hs-header-ink);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.hs-product-wordmark {
+  display: inline-flex;
+}
+
+.hs-product-wordmark b,
+.hs-product-wordmark i {
+  font-style: normal;
+  font-weight: inherit;
+}
+
+.hs-product-wordmark i {
+  margin-left: 4px;
+  color: var(--hs-header-green);
+  font-weight: 600;
+}
+
+.VPNavBarTitle .logo {
+  width: 24px;
+  height: 24px;
+}
+
+.VPNavBar .VPNavBarMenuLink {
+  color: var(--hs-header-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.VPNavBar .VPNavBarMenuLink:hover,
+.VPNavBar .VPNavBarMenuLink.active {
+  color: var(--hs-header-green);
+}
+
+.VPNavBar .VPNavBarMenuLink.active::after {
+  background-color: var(--hs-header-green);
+}
+
+.VPNavBar .VPFlyout .button,
+.VPNavBar .VPFlyout .text,
+.VPNavBar .VPSocialLink {
+  color: var(--hs-header-ink);
+}
+
+.VPNavBar .VPFlyout:hover .text,
+.VPNavBar .VPSocialLink:hover {
+  color: var(--hs-header-green);
+}
+
+.VPNavBar .VPFlyout .icon {
+  fill: currentColor;
+}
+
+.VPNavBar .VPNavBarAppearance {
+  --vp-input-border-color: var(--hs-header-ink);
+  --vp-input-switch-bg-color: var(--hs-header-paper);
+  --vp-c-neutral-inverse: var(--hs-header-ink);
+  --vp-c-text-1: var(--hs-header-paper);
+  --vp-c-text-2: var(--hs-header-paper);
+}
+
+@media (max-width: 640px) {
+  .VPNavBar .wrapper {
+    padding: 0 18px;
+  }
+}
+
+html[lang="hi-IN"] .vp-doc p,
+html[lang="hi-IN"] .vp-doc li,
+html[lang="hi-IN"] .hs-landing,
+html[lang="hi-IN"] .VPHome {
+  line-height: 1.65;
+}
+
+html[lang="zh-CN"] .vp-doc p,
+html[lang="zh-CN"] .vp-doc li,
+html[lang="zh-CN"] .hs-landing,
+html[lang="zh-CN"] .VPHome {
+  line-height: 1.7;
+}

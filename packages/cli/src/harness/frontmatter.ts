@@ -2,22 +2,59 @@ import { parseFrontmatter } from '../util.js';
 import type { HarnessArtifact } from './collectors.js';
 import type { ToolId } from './registry.js';
 
-function toolForRule(path: string, declared: ToolId): ToolId {
-  if (declared !== 'antigravity') return declared;
-  if (path.includes('/.agent/')) return 'antigravity';
-  return 'antigravity';
+function isClaudeRulesPath(path: string): boolean {
+  return /(^|\/)\.claude\/rules\//.test(path);
+}
+
+/**
+ * Rules that a tool auto-loads without requiring any frontmatter:
+ * Continue loads everything under .continue/rules/, Claude Code loads
+ * `.claude/rules/*.md`, and nested context files (AGENTS.md/CLAUDE.md/GEMINI.md
+ * in subdirectories) are loaded by directory scope with no metadata at all.
+ */
+function autoLoadsWithoutFrontmatter(path: string, toolId: ToolId): boolean {
+  if (toolId === 'continue' && /(^|\/)\.continue\/rules\//.test(path)) return true;
+  if (toolId === 'claude-code' && isClaudeRulesPath(path)) return true;
+  return /\/(AGENTS|CLAUDE|GEMINI)\.md$/.test(path);
+}
+
+/** True when Claude rule frontmatter declares path-scoped `paths` (string or YAML list). */
+function claudeRuleHasPaths(content: string | null): boolean {
+  if (!content) return false;
+  const fm = parseFrontmatter(content);
+  if (fm?.paths !== undefined && fm.paths.trim().length > 0) return true;
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return false;
+  const lines = match[1]!.split(/\r?\n/);
+  let inPathsList = false;
+  for (const line of lines) {
+    if (/^paths\s*:\s*.+/.test(line) && !/^paths\s*:\s*$/.test(line)) {
+      return true;
+    }
+    if (/^paths\s*:\s*$/.test(line)) {
+      inPathsList = true;
+      continue;
+    }
+    if (inPathsList) {
+      if (/^\s*-\s+\S/.test(line)) return true;
+      if (/^\S/.test(line)) inPathsList = false;
+    }
+  }
+  return false;
+}
+
+function claudeRuleIsAlwaysOn(path: string, content: string | null): boolean {
+  if (!isClaudeRulesPath(path)) return false;
+  return !claudeRuleHasPaths(content);
 }
 
 /** CTX-04: rule has usable activation metadata for its tool. */
 export function ruleHasValidFrontmatter(path: string, toolId: ToolId, content: string | null): boolean {
+  if (autoLoadsWithoutFrontmatter(path, toolId)) return true;
   const fm = content ? parseFrontmatter(content) : null;
-  if (!fm) {
-    // Continue rules auto-load from .continue/rules/ without requiring frontmatter.
-    if (toolId === 'continue' && path.includes('/.continue/rules/')) return true;
-    return false;
-  }
+  if (!fm) return false;
 
-  switch (toolForRule(path, toolId)) {
+  switch (toolId) {
     case 'cursor':
       return fm.description !== undefined || fm.alwaysApply !== undefined || fm.globs !== undefined;
     case 'windsurf':
@@ -51,9 +88,13 @@ export function ruleIsScoped(
   content: string | null,
   allRules: HarnessArtifact[],
 ): boolean {
+  // Nested context files apply only to their subtree — scoped by construction.
+  if (/\/(AGENTS|CLAUDE|GEMINI)\.md$/.test(path) && !/(^|\/)\.claude\/(CLAUDE|AGENTS)\.md$/.test(path)) {
+    return true;
+  }
   const fm = content ? parseFrontmatter(content) : null;
 
-  switch (toolForRule(path, toolId)) {
+  switch (toolId) {
     case 'cursor':
       return Boolean(fm?.globs);
     case 'windsurf':
@@ -62,6 +103,8 @@ export function ruleIsScoped(
       return Boolean(fm?.paths && fm.paths.trim().length > 2);
     case 'copilot':
       return Boolean(fm?.applyTo && isGlobLike(fm.applyTo));
+    case 'claude-code':
+      return isClaudeRulesPath(path) && claudeRuleHasPaths(content);
     case 'continue': {
       const continueRules = allRules.filter((r) => r.toolId === 'continue');
       return continueRules.length > 1;
@@ -80,14 +123,19 @@ export function countRuleScopes(rules: HarnessArtifact[], read: (p: string) => s
     const content = read(rule.path);
     const fm = content ? parseFrontmatter(content) : null;
     if (!fm) {
-      if (rule.toolId === 'continue') scoped += 1;
+      if (ruleIsScoped(rule.path, rule.toolId, content, rules) || rule.toolId === 'continue') {
+        scoped += 1;
+      } else if (claudeRuleIsAlwaysOn(rule.path, content)) {
+        alwaysOn += 1;
+      }
       continue;
     }
     if (ruleIsScoped(rule.path, rule.toolId, content, rules)) {
       scoped += 1;
     } else if (
       (rule.toolId === 'cursor' && (fm.alwaysApply ?? '').toLowerCase() === 'true') ||
-      (rule.toolId === 'windsurf' && fm.trigger && ALWAYS_ON_TRIGGERS.has(fm.trigger.trim().toLowerCase()))
+      (rule.toolId === 'windsurf' && fm.trigger && ALWAYS_ON_TRIGGERS.has(fm.trigger.trim().toLowerCase())) ||
+      claudeRuleIsAlwaysOn(rule.path, content)
     ) {
       alwaysOn += 1;
     }

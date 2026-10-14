@@ -1,13 +1,21 @@
 # The Maturity Model
 
-This chapter defines the rubric. It is the same rubric — literally the same
-thresholds — implemented by [`npx harness-score`](/guide/measure-and-improve),
+This chapter defines the maturity model — the same assessment framework
+implemented by [`npx harness-score`](/guide/measure-and-improve),
 so a level you read here is a level you can measure, reproduce, and gate on.
+
+The shape follows familiar capability-maturity patterns (DORA *capabilities*,
+OWASP SAMM *business functions*, CMMI *levels*): **dimensions** measure
+areas of practice, **checks** are deterministic pass/fail indicators, and
+**levels** gate on coverage shape — not just a raw percentage.
 
 Design goals:
 
 - **Deterministic.** Every check is a filesystem fact: a file exists, parses,
   matches a pattern. No model, no judgment calls, no network.
+- **Two scores.** **Maturity** (repo-only) is the official level for CI and
+  badges. **Effective** (repo ∪ optional global scopes) shows what a developer
+  machine likely exposes to the agent — see [Metrics & Codes](./metrics-and-codes#scores-maturity-vs-effective).
 - **Harness-agnostic, Cursor as flagship example.** Rules, skills, hooks, and
   commands from any supported AI-first tool (Cursor, Windsurf, Claude Code,
   Codex/Antigravity `.agents/`, OpenCode, Cline, Continue, Copilot
@@ -32,7 +40,8 @@ Design goals:
 | Hygiene & Safety | 23 | Secrets, env files, lockfile, license, MCP config |
 
 Each dimension is the sum of individual checks (full catalog with
-remediations in [chapter 7](/guide/measure-and-improve#the-check-catalog)).
+remediations in [chapter 8](./measure-and-improve#the-check-catalog); ID
+reference table in [chapter 9 — Metrics & Codes](./metrics-and-codes)).
 
 ## The five levels
 
@@ -82,6 +91,27 @@ the session. Guides, sensors, and guardrails cover all six dimensions. A
 mistake now has to get past the rules, the on-edit hooks, the tests, the
 type checker, CI, *and* the gates — mostly without any human in the loop.
 
+## When a level is capped
+
+A level's requirements assume every dimension is in play. A team can
+exclude specific checks — or an entire dimension — via
+`.harness-score.json`'s `extends`/`rules` (see
+[Metrics & Codes](./metrics-and-codes#team-customization)), for a
+structural reason a policy demands, not a preference.
+
+If that exclusion empties out a dimension a level depends on, the scanner
+reports the level as **capped** instead of pretending it's just another gap
+to close. L4 is the clearest example: it's *defined* by the Hooks &
+Guardrails dimension, so a repository under the `no-hooks` preset can climb
+every other dimension freely, but L4 stays capped — not "0%, keep trying,"
+but "not reachable under your current configuration, and here's exactly
+why." Every other dimension's score is completely unaffected.
+
+This is the model staying honest, not a penalty: "necessary, not
+sufficient" (below) already means a high score is no guarantee — a capped
+level is the same idea applied to a team's own deliberate, disclosed choice
+about what applies to them.
+
 ## Reading a score
 
 Two repositories can both score 65% with very different shapes — that's why
@@ -99,7 +129,7 @@ ambiguous.
 
 ## What the model deliberately does not measure
 
-Honesty about the limits of determinism (Fowler's "behavior harness is
+Honesty about the limits of determinism (Böckeler's "behavior harness is
 immature" caveat applies to measurement too):
 
 - **Whether your tests are good** — only that they exist, run, and gate.

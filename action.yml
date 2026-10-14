@@ -1,0 +1,307 @@
+name: 'Harness Score'
+description: >-
+  Deterministic AI-harness maturity audit with CI gates, reports, badges, and
+  pull-request score deltas.
+author: 'Fernando Paladini'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  min-level:
+    description: 'Fail below this level (0–4). An incomplete gated snapshot exits 2, including at 0.'
+    required: false
+    default: '0'
+  badge:
+    description: 'Path to write the SVG maturity badge (empty to skip).'
+    required: false
+    default: 'harness-badge.svg'
+  report:
+    description: 'Path to write the markdown report (empty to skip).'
+    required: false
+    default: ''
+  working-directory:
+    description: 'Directory to scan.'
+    required: false
+    default: '.'
+  version:
+    description: 'harness-score npm version or package spec to run.'
+    required: false
+    default: '1.8.2'
+  comment:
+    description: >-
+      Post (or update) a sticky pull-request comment showing the harness
+      score and, on pull_request events, its delta against the base branch.
+      Opt-in: the calling workflow must grant `pull-requests: write`.
+    required: false
+    default: 'false'
+  include-user-harness:
+    description: 'Include user-level harness artifacts (~/.cursor, ~/.claude, etc.) in the effective score.'
+    required: false
+    default: 'false'
+  include-system-harness:
+    description: 'Include system-level harness artifacts in the effective score (minimal support in v1).'
+    required: false
+    default: 'false'
+  gate:
+    description: 'Which score --min-level compares against: maturity (repo-only, default) or effective.'
+    required: false
+    default: 'maturity'
+  config:
+    description: 'Path to a harness-score JSON config file (default: .harness-score.json in the scan root).'
+    required: false
+    default: ''
+
+outputs:
+  level:
+    description: 'Maturity level index (0–4).'
+    value: ${{ steps.scan.outputs.level }}
+  level-name:
+    description: 'Maturity level name (Unharnessed … Self-correcting).'
+    value: ${{ steps.scan.outputs.level-name }}
+  percent:
+    description: 'Maturity score percentage.'
+    value: ${{ steps.scan.outputs.percent }}
+  effective-level:
+    description: 'Effective level index when the effective snapshot is complete.'
+    value: ${{ steps.scan.outputs.effective-level }}
+  effective-percent:
+    description: 'Effective score percentage when the effective snapshot is complete.'
+    value: ${{ steps.scan.outputs.effective-percent }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HS_BADGE: ${{ inputs.badge }}
+        HS_CONFIG: ${{ inputs.config }}
+        HS_GATE: ${{ inputs.gate }}
+        HS_INCLUDE_SYSTEM_HARNESS: ${{ inputs.include-system-harness }}
+        HS_INCLUDE_USER_HARNESS: ${{ inputs.include-user-harness }}
+        HS_MIN_LEVEL: ${{ inputs.min-level }}
+        HS_REPORT: ${{ inputs.report }}
+        HS_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        ARGS=(--quiet --json)
+        [ -n "$HS_CONFIG" ] && ARGS+=(--config "$HS_CONFIG")
+        [ "$HS_INCLUDE_USER_HARNESS" = "true" ] && ARGS+=(--scope user)
+        [ "$HS_INCLUDE_SYSTEM_HARNESS" = "true" ] && ARGS+=(--scope system)
+        [ -n "$HS_GATE" ] && ARGS+=(--gate "$HS_GATE")
+        set +e
+        npx -y "harness-score@$HS_VERSION" . "${ARGS[@]}" > harness-report.json
+        SCAN_STATUS=$?
+        set -e
+
+        if ! SCAN_STATE=$(node <<'NODE'
+        const fs = require('fs');
+        const r = JSON.parse(fs.readFileSync('harness-report.json', 'utf8'));
+        if (!r.level || !r.score || !r.effective || !Array.isArray(r.dimensions)) {
+          throw new Error('harness-report.json is not a Harness Score report');
+        }
+
+        const fallback = () => r.truncated
+          ? { status: 'incomplete', reasons: [{ code: 'file-count-limit' }] }
+          : { status: 'complete', reasons: [] };
+        const maturity = r.verdicts?.maturity ?? fallback();
+        const effective = r.verdicts?.effective ?? fallback();
+        const outputs = [];
+        const summary = [];
+
+        if (maturity.status === 'complete') {
+          outputs.push(`level=${r.level.index}`);
+          outputs.push(`level-name=${r.level.name}`);
+          outputs.push(`percent=${r.score.percent}`);
+          summary.push(`## Harness Score: L${r.level.index} - ${r.level.name} (${r.score.percent}% maturity)`);
+          summary.push('');
+          summary.push('| Dimension | Score | % |');
+          summary.push('|---|---|---|');
+          summary.push(...r.dimensions.map((d) => `| ${d.title} | ${d.earned}/${d.max} | ${d.percent}% |`));
+        } else {
+          console.error('::error::Harness maturity scan is incomplete; maturity outputs and artifacts were not published.');
+          summary.push('## Harness Score: maturity unavailable');
+          summary.push('');
+          summary.push('> Error: The maturity scan is incomplete. No maturity outputs or artifacts were published.');
+        }
+
+        if (effective.status === 'complete') {
+          outputs.push(`effective-level=${r.effective.level.index}`);
+          outputs.push(`effective-percent=${r.effective.score.percent}`);
+          if (
+            maturity.status === 'complete' &&
+            (r.effective.level.index !== r.level.index || r.effective.score.percent !== r.score.percent)
+          ) {
+            summary.splice(1, 0, `Effective: L${r.effective.level.index} (${r.effective.score.percent}%) - gate: ${r.gate}`, '');
+          }
+        } else {
+          console.error('::warning::Harness effective scan is incomplete; effective outputs were not published.');
+          summary.push('');
+          summary.push('> Warning: Effective score unavailable because the effective scan is incomplete.');
+        }
+
+        if (outputs.length > 0) {
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `${outputs.join('\n')}\n`);
+        }
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`);
+        process.stdout.write([
+          maturity.status,
+          effective.status,
+          r.gate,
+          r.level.index,
+          r.effective.level.index,
+        ].join('\t'));
+        NODE
+        ); then
+          echo "::error::Harness Score did not produce a valid JSON report."
+          if [ "$SCAN_STATUS" -ne 0 ]; then
+            exit "$SCAN_STATUS"
+          fi
+          exit 2
+        fi
+
+        IFS=$'\t' read -r MATURITY_STATUS EFFECTIVE_STATUS GATE LEVEL EFF_LEVEL <<< "$SCAN_STATE"
+
+        ARTIFACT_ARGS=(--quiet)
+        [ -n "$HS_BADGE" ] && ARTIFACT_ARGS+=(--badge "$HS_BADGE")
+        [ -n "$HS_REPORT" ] && ARTIFACT_ARGS+=(--md "$HS_REPORT")
+        [ -n "$HS_CONFIG" ] && ARTIFACT_ARGS+=(--config "$HS_CONFIG")
+        [ "$HS_INCLUDE_USER_HARNESS" = "true" ] && ARTIFACT_ARGS+=(--scope user)
+        [ "$HS_INCLUDE_SYSTEM_HARNESS" = "true" ] && ARTIFACT_ARGS+=(--scope system)
+        [ -n "$HS_GATE" ] && ARTIFACT_ARGS+=(--gate "$HS_GATE")
+        if [ "$MATURITY_STATUS" = "complete" ] && { [ -n "$HS_BADGE" ] || [ -n "$HS_REPORT" ]; }; then
+          set +e
+          npx -y "harness-score@$HS_VERSION" . "${ARTIFACT_ARGS[@]}"
+          ARTIFACT_STATUS=$?
+          set -e
+          if [ "$ARTIFACT_STATUS" -ne 0 ] && ! { [ "$ARTIFACT_STATUS" -eq 2 ] && [ "$EFFECTIVE_STATUS" = "incomplete" ]; }; then
+            exit "$ARTIFACT_STATUS"
+          fi
+        fi
+
+        if [ "$SCAN_STATUS" -ne 0 ] && [ "$SCAN_STATUS" -ne 2 ]; then
+          exit "$SCAN_STATUS"
+        fi
+
+        if [ "$MATURITY_STATUS" != "complete" ]; then
+          [ "$SCAN_STATUS" -ne 0 ] && exit "$SCAN_STATUS"
+          exit 2
+        fi
+
+        if [ "$GATE" = "effective" ] && [ "$EFFECTIVE_STATUS" != "complete" ]; then
+          [ "$SCAN_STATUS" -ne 0 ] && exit "$SCAN_STATUS"
+          exit 2
+        fi
+
+        if [ "$SCAN_STATUS" -ne 0 ] && ! { [ "$SCAN_STATUS" -eq 2 ] && [ "$EFFECTIVE_STATUS" = "incomplete" ] && [ "$GATE" = "maturity" ]; }; then
+          exit "$SCAN_STATUS"
+        fi
+
+        GATE_LEVEL="$LEVEL"
+        [ "$GATE" = "effective" ] && GATE_LEVEL="$EFF_LEVEL"
+
+        if [ "$GATE_LEVEL" -lt "$HS_MIN_LEVEL" ]; then
+          echo "::error::Harness ${GATE} L${GATE_LEVEL} is below required L${HS_MIN_LEVEL}."
+          node -e "const r=require('./harness-report.json'); console.log((r.gate==='effective'?r.effective:r).level.nextLevelGaps.join('; '))"
+          exit 1
+        fi
+
+    - id: baseline
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HS_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        HS_CONFIG: ${{ inputs.config }}
+        HS_VERSION: ${{ inputs.version }}
+        HS_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        BASELINE_ARGS=(--quiet --json)
+        [ -n "$HS_CONFIG" ] && BASELINE_ARGS+=(--config "$HS_CONFIG")
+        git fetch origin "$HS_BASE_REF"
+        git worktree remove /tmp/harness-score-base --force 2>/dev/null || true
+        git worktree add /tmp/harness-score-base FETCH_HEAD
+        npx -y "harness-score@$HS_VERSION" "/tmp/harness-score-base/$HS_WORKING_DIRECTORY" \
+          "${BASELINE_ARGS[@]}" > /tmp/harness-score-base.json
+        git worktree remove /tmp/harness-score-base --force
+
+    - id: diff
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HS_CONFIG: ${{ inputs.config }}
+        HS_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        DIFF_ARGS=(--quiet --json)
+        [ -n "$HS_CONFIG" ] && DIFF_ARGS+=(--config "$HS_CONFIG")
+        npx -y "harness-score@$HS_VERSION" . "${DIFF_ARGS[@]}" \
+          --diff /tmp/harness-score-base.json > /tmp/harness-score-diff.json
+
+    - id: comment
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const { diff } = JSON.parse(fs.readFileSync('/tmp/harness-score-diff.json', 'utf8'));
+          const marker = '<!-- harness-score-report -->';
+          const arrow = diff.level.delta > 0 ? '⬆️' : diff.level.delta < 0 ? '⬇️' : '➡️';
+          const sign = (n) => (n > 0 ? `+${n}` : `${n}`);
+
+          const modelWarning = diff.maturityModelChanged
+            ? '> ⚠ Baseline is from a different tool version or maturity model total — some deltas below may reflect that, not repository changes.\n\n'
+            : '';
+
+          const presetWarning = diff.presetChanged
+            ? '> ⚠ Baseline used a different `.harness-score.json` extends/rules config — some deltas below may reflect that, not repository changes.\n\n'
+            : '';
+
+          const movedDims = diff.dimensions.filter((d) => d.delta !== 0);
+          const dimTable = movedDims.length
+            ? [
+                '| Dimension | Before | After | Δ |',
+                '|---|---|---|---|',
+                ...movedDims.map((d) => `| ${d.title} | ${d.before}% | ${d.after}% | ${sign(d.delta)}pp |`),
+              ].join('\n')
+            : '_No dimension moved._';
+
+          const gained = diff.checksChanged.filter((c) => c.change === 'newly-passing').map((c) => c.id);
+          const lost = diff.checksChanged.filter((c) => c.change === 'newly-failing').map((c) => c.id);
+
+          const body = [
+            marker,
+            `### ${arrow} Harness Score: L${diff.level.before} · ${diff.level.beforeName} → L${diff.level.after} · ${diff.level.afterName}`,
+            '',
+            modelWarning + presetWarning + `**Score:** ${diff.score.before.earned}/${diff.score.before.max} (${diff.score.before.percent}%) → ` +
+              `${diff.score.after.earned}/${diff.score.after.max} (${diff.score.after.percent}%) (${sign(diff.score.deltaPercent)}pp)`,
+            '',
+            dimTable,
+            '',
+            gained.length ? `**Newly passing:** ${gained.join(', ')}` : '',
+            lost.length ? `**Newly failing:** ${lost.join(', ')}` : '',
+            '',
+            '[Harness Score guide](https://paladini.github.io/harness-score/)',
+          ]
+            .filter((line) => line !== '')
+            .join('\n');
+
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          const comments = await github.paginate(github.rest.issues.listComments, {
+            owner,
+            repo,
+            issue_number,
+            per_page: 100,
+          });
+          const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+          if (existing) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }

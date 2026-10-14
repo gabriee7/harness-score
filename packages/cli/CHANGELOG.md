@@ -1,0 +1,266 @@
+# harness-score
+
+## 1.8.2
+
+### Patch Changes
+
+- 9e8b0cb: Limit CI test and static-check detection to executed commands, ignoring workflow labels.
+
+  Thanks to [@paladini](https://github.com/paladini) for reporting this issue.
+
+## 1.8.1
+
+### Patch Changes
+
+- 6f5ff5a: Recognize Node's built-in test runner (`node:test`) as a configured test runner for SNS-01, including repositories with no package.json. When test files exist without a runner, SNS-01 names them instead of claiming that no runner was found.
+
+  Thanks to [@lglucas](https://github.com/lglucas) for reporting this.
+
+## 1.8.0
+
+### Minor Changes
+
+- 99eb3f4: HYG-05 is not applicable when a repository has no LICENSE file and the root `composer.json` or `package.json` `license` is `proprietary` or `UNLICENSED`. HYG-08 is not applicable when the repository has no MCP config. Not-applicable checks stay in the report with `checks[].applicable: false` and drop out of the score numerator and denominator. Adopting MCP later, or removing a closed-source license declaration, shows up in `--diff` as an applicability change.
+
+  Thanks to [@andersonRogani](https://github.com/andersonRogani) for reporting this.
+
+## 1.7.5
+
+### Patch Changes
+
+- 3be2590: Recognize Astral ty as a Python type checker. SNS-03 accepts `ty.toml` and `[tool.ty]` tables (including nested projects), and CI-03 accepts `ty check` in CI, including `uv run` and `uvx`.
+
+  Thanks to [@hiagot](https://github.com/hiagot) for contributing this change.
+
+## 1.7.4
+
+### Patch Changes
+
+- 77dc691: No scanner changes. Corrects release attribution for the Claude Code context scoring fix ([#80](https://github.com/paladini/harness-score/issues/80)).
+
+  Thanks to [Renato Spakauskas](https://www.linkedin.com/in/renatospakauskas/) for originally reporting this via LinkedIn. Thanks to [@paladini](https://github.com/paladini) for release maintenance.
+
+## 1.7.3
+
+### Patch Changes
+
+- 6d4d281: Treat Claude Code `.claude/CLAUDE.md` and `.claude/AGENTS.md` as project guides (CTX-01/02) instead of scoped rules, and recognize `.claude/rules/**/*.md` for CTX-03..06 with optional `paths` frontmatter.
+
+  **Score impact:** Repositories whose only rule-like file was `.claude/CLAUDE.md` or `.claude/AGENTS.md` lose 11 context points and can drop from L4 to L1; guide credit remains via CTX-01. Repos with `.claude/rules/` or nested context files in code directories keep or gain rule points.
+
+  Thanks to [Renato Spakauskas](https://www.linkedin.com/in/renatospakauskas/) for originally reporting this via LinkedIn ([#80](https://github.com/paladini/harness-score/issues/80)). Thanks to [@paladini](https://github.com/paladini) for filing the GitHub issue and shipping the fix.
+
+## 1.7.2
+
+### Patch Changes
+
+- 251d254: Recognize Claude Code and Cursor plugin default layouts when scanning a plugin repository root (`.claude-plugin/plugin.json` or `.cursor-plugin/plugin.json`), and include user-scoped Claude Code plugin installs from `~/.claude/plugins/installed_plugins.json` in the effective score when `--scope user` is enabled.
+
+  Thanks to [@almerindo](https://github.com/almerindo) for reporting this.
+
+## 1.7.1
+
+### Patch Changes
+
+- 19feb7d: Recognize PHP sensor tooling (PHPUnit/Pest, PHPStan/Psalm, PHPCS/Rector, Pint/PHP-CS-Fixer) and resolve Composer script bodies when inspecting CI workflows.
+
+  Thanks to [@andersonRogani](https://github.com/andersonRogani) for reporting the gap and suggesting detection signals in issue #72.
+
+## 1.7.0
+
+### Minor Changes
+
+- 5bebb05: Recognize Devin skills (`.devin/skills/*/SKILL.md`) and hooks (standalone `.devin/hooks.v1.json` or the `hooks` key in `.devin/config.json`), including event validation, config precedence, and `${DEVIN_PROJECT_DIR}` script path resolution.
+
+  Thanks to [@diegoflassa](https://github.com/diegoflassa) for contributing this
+  change.
+
+## 1.6.5
+
+### Patch Changes
+
+- c1f6b16: Skip `.devbox/` during scans. Devbox provisions this directory with binary
+  symlinks (e.g. `.devbox/bin/devbox`) that resolve outside the repo root,
+  which previously made the whole scan report incomplete via
+  `outside-root-symlink`.
+
+  Thanks to [@PAHJunior](https://github.com/PAHJunior) for contributing this
+  fix.
+
+## 1.6.4
+
+### Patch Changes
+
+- Synchronize the compact check catalog with the implemented Harness Score weights in English,
+  Portuguese, Spanish, Simplified Chinese, and Hindi. Documentation tests now protect check
+  weights, complete table rows, dimension totals, detailed catalog headings, overall totals,
+  and maturity thresholds across all five locales.
+
+## 1.6.3
+
+### Patch Changes
+
+- 4212dab: Detect Forgejo Actions workflows in `.forgejo/workflows/` for CI checks.
+
+## 1.6.2
+
+### Patch Changes
+
+- 9b55d4f: Detect Google Cloud Build CI configurations under `cloudbuild/` for CI checks.
+
+## 1.6.1
+
+### Patch Changes
+
+- 7124092: Detect non-GitHub CI configuration files in nested workspace projects. Thanks
+  to [@felipecontratres-gupy](https://github.com/felipecontratres-gupy) for
+  reporting the issue and contributing the initial fix.
+  Thanks also to [@dbtorrico](https://github.com/dbtorrico) for catching the
+  guide locale parity gap and providing translation suggestions.
+
+## 1.6.0
+
+### Minor Changes
+
+- 22767b4: Scan the complete repository tree without a production depth cap, raise the
+  file-count fuse to 1,000,000, and decide incomplete-scan failures from the
+  selected gate while preserving authoritative maturity outputs. Discovered
+  paths that cannot be inspected and symlinks that escape the scan root now also
+  make the affected snapshot incomplete.
+
+## 1.5.3
+
+### Patch Changes
+
+- 0007d96: Fail closed when repository or effective-scope filesystem walks are incomplete, with deterministic verdict reasons, diagnostic-only provisional output, and safe CLI, badge, diff, and GitHub Action behavior.
+- 653de57: Recognize supported tool directories as scan roots, select hook configurations deterministically,
+  and validate the current Claude Code event and handler contract with forward-compatible warnings.
+
+## 1.5.2
+
+### Patch Changes
+
+- 98e1127: Credit Birgitta Böckeler (not Martin Fowler) for the harness engineering articles, and fix related secondary attributions.
+- 9959ce8: Keep the navigation header legible after scrolling in dark mode.
+
+## 1.5.1
+
+### Patch Changes
+
+- Prepare the GitHub Action for its Marketplace launch with concise metadata,
+  version-aligned execution, hardened input handling, stable `v1` usage, and an
+  end-to-end CI smoke test.
+- Keep the CLI, JSR manifest, lockfile, and both GitHub Action entrypoints
+  version-aligned automatically during future releases.
+
+## 1.5.0
+
+### Minor Changes
+
+- cbc7b98: Add ESLint-flavored team customization to `.harness-score.json`: `extends` (named, maintainer-curated presets) and `rules` (per-check severity override, `"off"` or `"error"`). Ships one built-in preset, `no-hooks`, for environments where local hook execution is disallowed by policy.
+
+  Excluded checks are removed from both the numerator and denominator of their dimension's score — never penalized, never silently hidden. If a preset excludes every check in a dimension a maturity-level requirement depends on, that level is now correctly reported as `capped` (with a `capReason`) instead of showing a misleading "0%, keep trying" gap — L4 in particular is definitionally tied to the Hooks & Guardrails dimension, so a repo under `no-hooks` can climb every other dimension freely but stays capped at L3.
+
+  New additive `Report` fields: `preset` (what customization was actually applied), `checks[].severity`, `dimensions[].applicable`, `level.capped`/`level.capReason`. `--diff` gains a `presetChanged` flag mirroring the existing `maturityModelChanged`.
+
+## 1.3.3
+
+### Patch Changes
+
+- bed0c5c: Improve navigation contrast and control colors in the dark theme.
+- 6c80f21: Add the Harness Maturity Showcase to the shared documentation navigation.
+- 1fc1a2e: Expose the GitHub Action at the repository root so dependency-review can resolve the repository's MIT license.
+- 71a4f70: Align the documentation header with the Harness Maturity Showcase product shell.
+
+## 1.3.2
+
+### Patch Changes
+
+- Fix the v1.3.1 release foot-gun: `sync-version.mjs` now biome-formats `jsr.json` after rewriting it (so release commits stay CI-green), and `package.json` uses npm 11's canonical `bin` / `repository.url` forms so Trusted Publishing no longer warns that the CLI bin was "invalid and removed".
+
+## 1.3.1
+
+### Patch Changes
+
+- 4f4d771: Extend `--scope user` allowlist to cover all multi-harness tools with documented global paths (Windsurf, Cline, Continue, Zed, Antigravity), including path aliases where tools store globals outside the repo layout.
+
+## 1.3.0
+
+### Minor Changes
+
+- 64bee8d: Add harness scope configuration (`.harness-score.json`, `--scope`, `--gate`) with dual maturity/effective scores and global user-level overlay scanning.
+
+## 1.2.0
+
+### Minor Changes
+
+- aa4b498: Add Hindi (`hi-IN`) documentation locale with full guide translation and VitePress i18n wiring. Includes previously unreleased zh-CN docs locale from the same release train.
+
+## 1.1.0
+
+### Minor Changes
+
+- Fix `HKS-05` (hook scripts exist in the repository) to resolve both Claude Code interpolation forms for hook command paths:
+  - **Unbraced `$VAR/...` form:** `hookCommandPathsResolve` only stripped the braced `${VAR}/...` prefix before checking whether a hook command references a committed file. The unbraced form (`$CLAUDE_PROJECT_DIR/.claude/hooks/setup.sh`) is equally valid Claude Code syntax and was reported as a missing script even when the file exists and is committed — a false negative costing 2 points.
+  - **`node_modules/.bin/` binaries:** a hook command referencing a package-manager-installed binary (e.g. `${CLAUDE_PROJECT_DIR}/node_modules/.bin/block-no-verify`) is now treated as resolved. These are populated by `npm install`, not scripts a repository is expected to commit — the previous "commit the script" remediation didn't apply to them.
+- Add full VitePress guide translations in English (default), Portuguese (Brazil), and Latin American Spanish, with translated landing pages and language switcher on home and guide.
+
+## 1.0.0
+
+### Major Changes
+
+- **Harness Score 1.0.0** — first stable major release.
+
+  Harness Score is now a general-purpose harness-maturity platform, not a
+  Cursor-specific tool: one scan scores the harness a repository builds for
+  Cursor, Claude Code, Windsurf, Cline, Continue, Codex, and other AI coding
+  tools, with OR semantics across equivalent artifacts.
+
+  With 1.0, the public surface is stable under semantic versioning:
+
+  - Check IDs (`CTX-01` … `HYG-08`) are stable identifiers.
+  - The `Report` JSON shape (`--json` and the typed programmatic API) only
+    gains fields in minors; removals/renames are major.
+  - CLI flags and exit codes (`0` pass, `1` gate failure, `2` usage error)
+    are stable.
+  - Maturity-model evolution (new checks, point totals, thresholds) ships in
+    minor versions and is flagged by `--diff`'s `maturityModelChanged`.
+  - The determinism invariants — zero LLM calls, zero network access, zero
+    runtime dependencies, same input ⇒ same output — are permanent.
+
+  No breaking changes relative to v0.6.0: scores, output shapes, and flags are
+  identical. The major bump marks API stability, not disruption.
+
+## 0.6.0
+
+### Minor Changes
+
+- 0e35129: Surface detected harnesses in the human-readable reports. The terminal report
+  gains a `Detected: Cursor, Claude Code` line under the maturity header and the
+  markdown report gains a `**Detected harnesses:**` line — the same list `--json`
+  has exposed as `detectedHarnesses` since v0.4.0, now visible without parsing
+  JSON. New public exports: `TOOL_DISPLAY_NAMES` and `toolDisplayName()` from the
+  harness registry. Reports with an empty list (no tool configured) render
+  exactly as before.
+
+## 0.5.0
+
+### Minor Changes
+
+- 5f55685: Fix three multi-harness equivalence gaps found by field-testing v0.4.0 against a corpus of differently-shaped repositories:
+
+  - **Hooks (regression fix):** a hook-less `.claude/settings.json` (e.g. permissions only) no longer shadows a fully-configured `.cursor/hooks.json` — of all parseable hooks configs, the one with the most registered events now wins, so adopting a second tool can never lower HKS-02…05.
+  - **CTX-04:** `.continue/rules/*.md` without frontmatter now pass at the repository root too (the path check previously only matched in subdirectories).
+  - **CTX-03/04/05 (scoring change, minor):** nested context files (`AGENTS.md`/`CLAUDE.md`/`GEMINI.md` in subdirectories) now count as scoped rules — they are the directory-scoped rules mechanism of Claude Code, Codex, and Gemini. A fully-harnessed Claude Code repository can now progress past L1 without any `.cursor/` paths.
+
+## 0.4.0
+
+### Minor Changes
+
+- 6c7a64b: Migrate the build to tsup (smaller, bundled `dist/`, an explicit `"types"` field and `"types"` export condition), memoize `ctx.matching()` for a measurable scan-time win on large repositories, and add packaging-level type/exports verification (`attw`, a consumer-facing type smoke test) to CI. No public API or output changes — verified against a golden-output regression snapshot and an external-consumer `npm pack` smoke test.
+- f3ad4b6: Rename public terminology from "rubric" to **maturity model** (aligned with DORA/SAMM/CMMI framing). Breaking API rename: `ReportDiff.rubricChanged` → `maturityModelChanged`. Issue template `rubric_change.yml` → `check_change.yml`; test `rubric-sync.test.ts` → `maturity-sync.test.ts`.
+- b879862: Recognize equivalent AI harness artifacts across Cursor, Windsurf, Claude Code, Codex/Antigravity, OpenCode, Cline, Continue, Copilot instructions, and Zed using OR semantics — a single configured tool is enough to satisfy existing checks without requiring `.cursor/` paths.
+
+### Patch Changes
+
+- f3ad4b6: Reconcile the two plugin generators that collided when #18 and #13 merged: registry-derived path hints now live in the generated `plugins/shared/tool-paths.mjs`, the hand-maintained `plugins/shared/tools.mjs` imports its paths from it, and `npm run plugins:sync-check` (previously shadowed by a duplicate script key) runs both sync gates.

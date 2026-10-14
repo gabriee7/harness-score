@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { findSecret, parseFrontmatter, safeJsonParse } from '../src/util.js';
+import { compareLexically, findSecret, parseFrontmatter, safeJsonParse } from '../src/util.js';
+
+describe('compareLexically', () => {
+  test('uses locale-independent code-point ordering', () => {
+    expect(['z', 'A', 'a', '.cursor'].sort(compareLexically)).toEqual(['.cursor', 'A', 'a', 'z']);
+  });
+});
 
 describe('parseFrontmatter', () => {
   test('plain single-line values still work', () => {

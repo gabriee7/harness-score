@@ -7,13 +7,14 @@ npx harness-score
 ```
 
 The scanner walks your repository (filesystem only — no LLM, no network, no
-telemetry), runs 36 deterministic checks, and reports a maturity level with
-the exact gaps to the next one:
+telemetry), runs 36 deterministic checks across any AI tool, and reports a
+maturity level with the exact gaps to the next one:
 
 ```
-  harness-score v0.3.0  /work/my-app
+  harness-score v1.0.0  /work/my-app
 
   Maturity: L2 · Guided   Score: 66/108 (61%)
+  Detected: Cursor, Claude Code
 
   Context & Guides     ████████████████░░░░  80%
   Skills & Commands    █████████████░░░░░░░  67%
@@ -22,6 +23,10 @@ the exact gaps to the next one:
 
   To reach L3: sensors ≥ 60%; ci ≥ 50%
 ```
+
+> **Multi-tool:** The scanner recognizes harness artifacts from Cursor, Claude Code,
+> Windsurf, Cline, Continue, and other tools via OR semantics — if you configure
+> any one tool, Harness Score counts it. Learn more in [Multi-Harness Support](./multi-harness).
 
 ## Installing
 
@@ -46,21 +51,50 @@ import { score } from 'harness-score';
 
 const report = score('/path/to/repo');
 console.log(report.level.name, report.score.percent, report.dimensions);
+// With global scopes: score(path, { scopeFlags: ['user'] })
+console.log(report.effective.level.index);
 ```
 
-`Report`, `Check`, `CheckResult`, `DimensionScore`, `LevelInfo`, and every
+`Report`, `Check`, `CheckResult`, `DimensionScore`, `LevelInfo`, `ScoreSnapshot`, and every
 other shape ship as TypeScript declarations — resolved via an explicit
 `"types"` field, so editors and `tsc` pick them up with no extra
 configuration. Lower-level building blocks are exported too, for anything
 `score()` doesn't cover directly:
 
 ```ts
-import { createScanContext, buildReport, computeDiff, renderMarkdown } from 'harness-score';
+import { score, computeDiff, renderMarkdown } from 'harness-score';
 
-const ctx = createScanContext('/path/to/repo');   // walk the filesystem once
-const report = buildReport(ctx);                  // run all 36 checks against it
+const report = score('/path/to/repo');
 const markdown = renderMarkdown(report);          // same renderer the CLI's --md uses
 ```
+
+## Scan configuration {#scan-configuration}
+
+By default the scanner measures **repository maturity only** — the harness
+that travels with the code and reproduces in CI. Optionally include
+user-level or shared harness trees for an **effective** score (what the agent
+likely sees on a developer laptop).
+
+```json
+{
+  "scopes": { "user": false, "system": false },
+  "extraRoots": [{ "id": "team-shared", "path": "../shared-harness" }],
+  "gate": "maturity"
+}
+```
+
+Save as `.harness-score.json` at the scan root, or pass `--config <file>`.
+Full key reference: [Metrics & Codes — configuration](./metrics-and-codes#configuration-file-harness-scorejson).
+
+```bash
+harness-score --scope user              # repo + ~/.cursor, ~/.claude, …
+harness-score --scope user,system
+harness-score --gate effective --min-level 2   # gate on effective score
+```
+
+The terminal report shows **Maturity** (repo) and **Effective** (when they
+differ). CI should keep `gate: maturity` unless you intentionally run on
+self-hosted runners with a populated user harness.
 
 ## CLI reference
 
@@ -69,8 +103,11 @@ harness-score [path]              # human report (default: current directory)
 harness-score --json              # full report as JSON
 harness-score --md report.md      # markdown report (use "-" for stdout)
 harness-score --badge badge.svg   # SVG pill: harness + detected level (L0–L4)
-harness-score --min-level 3       # exit 1 if below L3 — the CI gate
-harness-score --diff base.json    # compare against a previous --json report
+harness-score --min-level 3       # exit 1 if below L3 — the CI gate (uses gate mode)
+harness-score --diff base.json    # compare maturity against a previous --json report
+harness-score --config .harness-score.json
+harness-score --scope user        # include user-level harness in effective score
+harness-score --gate maturity     # or effective — which score --min-level uses
 ```
 
 ### Tracking score over time {#diff-mode}
@@ -98,9 +135,9 @@ payload) and `--md` (adds a "Compared to baseline" section) too — this is
 what the GitHub Action uses to post "harness score moved from L2 to L3"
 comments on pull requests.
 
-## The Cursor plugin
+## The Cursor plugin {#the-cursor-plugin}
 
-Install **Harness Score** from [its plugin directory in this repo](https://github.com/paladini/harness-score/tree/main/plugin)
+Install **Harness Score** from [its plugin directory in this repo](https://github.com/paladini/harness-score/tree/main/plugins/cursor)
 (the Cursor Marketplace listing is submitted and pending review — this link
 will move there once it's live) and you get:
 
@@ -126,10 +163,12 @@ rules file rots. Ratchet your level in CI:
 Or use the packaged action, which also emits the badge:
 
 ```yaml
-- uses: paladini/harness-score/action@main
+- uses: paladini/harness-score@v1
   with:
     min-level: '3'
     badge: 'harness-badge.svg'
+    # include-user-harness: 'true'   # optional: effective score overlay
+    # gate: 'maturity'               # default — official repo maturity
 ```
 
 ## Show your maturity {#show-your-maturity}
@@ -164,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: paladini/harness-score/action@main
+      - uses: paladini/harness-score@v1
         with: { badge: 'harness-badge.svg' }
       - uses: JamesIves/github-pages-deploy-action@v4
         with: { branch: badges, folder: ., clean: false }
@@ -412,7 +451,9 @@ stable; the CLI links each failure to its entry here.
 ### Context & Guides (20 pts)
 
 #### CTX-01 · Agent context file present — 4 pts {#ctx-01}
-An `AGENTS.md` (or `CLAUDE.md` / `GEMINI.md`) exists at the repository root.
+A project guide exists: root `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`, or Claude
+Code instructions at `.claude/CLAUDE.md` or `.claude/AGENTS.md` (session-start
+memory — not scoped rules).
 **Fix:** create `AGENTS.md` answering: what is this project, how do I build
 and test it, what conventions hold, what must I never touch. Recipe in
 [chapter 3](/guide/guides-feedforward#writing-an-agents-md-that-works).
@@ -425,17 +466,25 @@ Commands over descriptions; point to rules instead of pasting them.
 #### CTX-03 · Scoped rules in use — 4 pts {#ctx-03}
 At least one scoped rule file for any supported tool (e.g. `.cursor/rules/*.mdc`,
 `.windsurf/rules/*.md`, `.clinerules/*.md`, `.continue/rules/*.md`,
-`.github/instructions/*.instructions.md`, `.agents/rules/*`).
+`.github/instructions/*.instructions.md`, `.agents/rules/*`, `.claude/rules/**/*.md`).
+Nested context files in code subdirectories (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`
+below the root, but not `.claude/CLAUDE.md` or `.claude/AGENTS.md`) also count —
+they are directory-scoped rules in tools like Claude Code and Codex.
 **Fix:** start with one short always-on rule holding your non-negotiables,
-then add path-scoped rules per area.
+then add path-scoped rules per area (or nested context files per subtree).
 
 #### CTX-04 · Rules have valid frontmatter — 3 pts {#ctx-04}
 Every rule declares activation metadata (`description`, `globs`/`trigger`/`paths`/`applyTo`, or `alwaysApply`).
+Rules a tool auto-loads without metadata — `.continue/rules/*`, `.claude/rules/*`
+(optional `paths` only), and nested context files — pass by construction.
 **Fix:** add the frontmatter block; without it the agent can't decide when the
 rule applies.
 
 #### CTX-05 · Rules are scoped — 2 pts {#ctx-05}
-Not every rule is blanket always-on.
+Not every rule is blanket always-on. Nested context files count as scoped —
+they apply only to their subtree. Claude Code `.claude/rules/*.md` without
+`paths` frontmatter is always-on; omit `paths` on only one rule, or scope
+with `paths:`.
 **Fix:** scope rules to paths (`globs:`, `trigger:` glob, `paths:`, `applyTo:`)
 so they load only when relevant — every always-on rule taxes every request's context.
 
@@ -454,7 +503,7 @@ The deprecated single-file format is absent (or modern scoped rules also exist).
 ### Skills & Commands (17 pts)
 
 #### SKL-01 · At least one skill — 4 pts {#skl-01}
-A `SKILL.md` under `.cursor/skills/<name>/`, `.claude/skills/<name>/`, or `.agents/skills/<name>/`.
+A `SKILL.md` under `.cursor/skills/<name>/`, `.claude/skills/<name>/`, `.agents/skills/<name>/`, or — when the scan root is a Claude Code or Cursor plugin repository — under default plugin `skills/<name>/` (manifest at `.claude-plugin/plugin.json` or `.cursor-plugin/plugin.json` at the scan root).
 **Fix:** package your most repeated procedure (deploy, release, migration)
 as a skill — [chapter 3](/guide/guides-feedforward#skills-the-procedural-layer).
 
@@ -465,7 +514,7 @@ alone; without them the skill is invisible.
 
 #### SKL-03 · Explicit workflows/commands defined — 3 pts {#skl-03}
 Command or workflow files (`.cursor/commands/`, `.windsurf/workflows/`,
-`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`).
+`.claude/commands/`, `.continue/prompts/`, `.zed/commands/`, `.agents/workflows/`, or plugin `commands/` at the scan root).
 **Fix:** encode workflows you trigger deliberately (`/review`, `/release`)
 as command/workflow files.
 
@@ -475,7 +524,7 @@ Descriptions ≥40 characters.
 to deploy or release; covers tagging, pipeline, rollback, smoke tests."
 
 #### AGT-01 · Custom subagent defined — 3 pts {#agt-01}
-A subagent file under `.cursor/agents/`, `.claude/agents/`, or `.opencode/agents/`.
+A subagent file under `.cursor/agents/`, `.claude/agents/`, `.opencode/agents/`, or plugin `agents/` at the scan root.
 **Fix:** package a purpose-built subagent for a job the primary agent should
 delegate (planning, review, release) — see
 [Subagents](/guide/cursor-harness-surface#subagents-purpose-built-delegates)
@@ -488,53 +537,83 @@ alone; without them the subagent is never invoked.
 
 ### Hooks & Guardrails (14 pts)
 
-#### HKS-01 · Hooks configuration present and valid — 4 pts {#hks-01}
-`.cursor/hooks.json` or `.claude/settings.json` (`hooks` key) exists and parses as JSON.
-**Fix:** create hooks config and grow from the
-recipes in [chapter 5](/guide/guardrails-and-safety#gate-hooks).
+Harness artifacts are recognized both from a repository root by their canonical path and when
+the tool directory itself is the scan root. For example, scanning `.claude` recognizes the
+physical `settings.json`, `hooks/`, `skills/`, and `agents/` paths as their `.claude/...`
+equivalents; scanning `.devin` similarly recognizes `hooks.v1.json`, `config.json` (`hooks` key),
+`hooks/`, and `skills/`. Scanning a plugin repository root (`.claude-plugin/plugin.json` or
+`.cursor-plugin/plugin.json` at the scan root) recognizes default `skills/`, `commands/`, `agents/`,
+and `hooks/hooks.json` as their tool-canonical equivalents. Nested plugin manifests elsewhere in the
+tree do not enable this aliasing. Generic roots named something else do not receive this treatment.
+Evidence always uses the physical path that was read.
 
-#### HKS-02 · Known events, version declared — 2 pts {#hks-02}
-Version/metadata present; every registered event is documented for your tool
-(Cursor lifecycle events, or Claude Code `PreToolUse`/`PostToolUse`).
-**Fix:** typo'd event names fail silently — check against the event list in
-[chapter 2](/guide/cursor-harness-surface#hooks-observe-and-control-the-agent-loop).
+#### HKS-01 · Hooks configuration present and valid JSON — 4 pts {#hks-01}
+`.cursor/hooks.json`, `.claude/settings.json` (`hooks` key), plugin `hooks/hooks.json` at the scan
+root, `.devin/hooks.v1.json` (standalone
+event map), or `.devin/config.json` (`hooks` key) exists and parses as JSON. When several configs
+exist, a valid non-empty config wins; native-root depth, event count, and lexical path provide
+deterministic tie-breakers. Gitignored `.devin/config.local.json` is not scanned.
+**Fix:** create hooks config and grow from the recipes in
+[chapter 5](/guide/guardrails-and-safety#gate-hooks).
+
+#### HKS-02 · Hook events and handlers are structurally valid — 2 pts {#hks-02}
+The event map is non-empty, every event contains valid handlers, and required vendor metadata
+such as Cursor's `version` is present. Claude Code handlers may use `command`, `http`, `mcp_tool`,
+`prompt`, or `agent`; each type must provide its required fields. The catalog includes all 31
+documented Claude Code events: `SessionStart`, `Setup`, `InstructionsLoaded`, `UserPromptSubmit`,
+`UserPromptExpansion`, `MessageDisplay`, `PreToolUse`, `PermissionRequest`, `PostToolUse`,
+`PostToolUseFailure`, `PostToolBatch`, `PermissionDenied`, `Notification`, `SubagentStart`,
+`SubagentStop`, `TaskCreated`, `TaskCompleted`, `Stop`, `StopFailure`, `TeammateIdle`,
+`ConfigChange`, `CwdChanged`, `DirectoryAdded`, `FileChanged`, `WorktreeCreate`, `WorktreeRemove`,
+`PreCompact`, `PostCompact`, `SessionEnd`, `Elicitation`, and `ElicitationResult`. Devin's
+standalone map documents `PreToolUse`, `PostToolUse`, `PermissionRequest`, `UserPromptSubmit`,
+`Stop`, `PostCompaction`, `SessionStart`, and `SessionEnd` (no `version` field required).
+**Forward compatibility:** an unknown but structurally valid event keeps its points and emits an
+`unknown-hook-event` warning. Empty or malformed events still fail.
 
 #### HKS-03 · Gate hook guards risky operations — 4 pts {#hks-03}
 A gate hook registered (Cursor: `beforeShellExecution`, `beforeMCPExecution`,
-`preToolUse`, or `beforeReadFile`; Claude Code: `PreToolUse`).
+`preToolUse`, or `beforeReadFile`; Claude Code or Devin: `PreToolUse` or `PermissionRequest`).
 **Fix:** add the destructive-command deny gate from chapter 5 — prose rules
 are requests; gates are facts.
 
 #### HKS-04 · Feedback hook observes output — 2 pts {#hks-04}
 A feedback hook registered (Cursor: `afterFileEdit`, `postToolUse`, …;
-Claude Code: `PostToolUse`).
+Claude Code: `PostToolUse`; Devin: `PostToolUse` or `Stop`).
 **Fix:** format-and-lint on edit gives the agent instant feedback inside the
 session.
 
 #### HKS-05 · Hook scripts committed — 2 pts {#hks-05}
-Scripts referenced by the hooks config exist in the repository.
-**Fix:** commit them; a hook pointing at a missing script fails open on
-every machine but the author's.
+Every repository-local path in a command executable, shell command, or `args` entry resolves to a
+committed file. Project-prefixed canonical paths such as
+`${CLAUDE_PROJECT_DIR}/.claude/hooks/check.js` and `${DEVIN_PROJECT_DIR}/.devin/hooks/check.py`
+also resolve to physical hook paths under native scan roots. Devin commands using the narrow
+`os.path.join(os.environ['DEVIN_PROJECT_DIR'], …)` form are resolved without executing Python.
+Valid non-command handlers pass with no applicable local scripts.
+**Fix:** commit every referenced local script; one missing path fails HKS-05.
 
 ### Sensors & Feedback (20 pts)
 
 #### SNS-01 · Test runner configured — 6 pts {#sns-01}
-A real test script/config (vitest, jest, pytest, go test, cargo test…).
+A real test script/config (vitest, jest, pytest, go test, cargo test,
+`node --test` when a file loads `node:test`, phpunit.xml, pest.php, …) or a declared Composer test package
+(`phpunit/phpunit`, `pestphp/pest`, …).
 **Fix:** wire up the runner with one obvious entry point and document it in
 AGENTS.md — tests are how the agent verifies its own work.
 
 #### SNS-02 · Linter configured — 5 pts {#sns-02}
-eslint/biome, ruff, golangci-lint, rubocop, or equivalent.
+eslint/biome, ruff, golangci-lint, rubocop, phpcs/rector, or equivalent.
 **Fix:** every convention expressible as a lint rule stops needing prose.
 
 #### SNS-03 · Type checking in place — 4 pts {#sns-03}
-tsconfig (ideally `strict: true`), mypy/pyright, or a statically typed
-language.
+tsconfig (ideally `strict: true`), mypy/pyright/ty, phpstan/psalm, or a
+statically typed language.
 **Fix:** the type checker is the only sensor that reviews every agent edit
 for free — [chapter 4](/guide/sensors-feedback#type-checking-the-free-sensor).
 
 #### SNS-04 · Formatter configured — 3 pts {#sns-04}
-prettier/biome, black/ruff-format, gofmt/rustfmt.
+prettier/biome, black/ruff-format, gofmt/rustfmt, pint, or php-cs-fixer
+(including `laravel/pint` in `composer.json` when no config file exists).
 **Fix:** formatting noise in diffs hides real mistakes from review.
 
 #### SNS-05 · Test files exist — 2 pts {#sns-05}
@@ -544,7 +623,11 @@ At least one actual test file in the tree.
 ### CI Feedback (14 pts)
 
 #### CI-01 · CI pipeline configured — 4 pts {#ci-01}
-GitHub Actions workflow (or GitLab/CircleCI/Jenkins equivalent).
+GitHub Actions or Forgejo Actions workflow (or GitLab/CircleCI/Jenkins
+equivalent), including a Google Cloud Build configuration under `cloudbuild/`.
+Detection is filesystem-based at any depth below the scan root, so CI files in
+nested workspace projects count. It does not verify that the provider actually
+executes the file.
 **Fix:** add `.github/workflows/ci.yml` running your sensors on every push.
 
 #### CI-02 · CI runs the tests — 4 pts {#ci-02}
@@ -583,6 +666,12 @@ No credential signatures in MCP config (`.cursor/mcp.json`, `.mcp.json`,
 secret published to every clone.
 
 #### HYG-05 · License present — 2 pts {#hyg-05}
+A root `LICENSE`, `LICENSE.md`, `LICENSE.txt`, or `COPYING` file.
+**Not applicable** when that file is absent and the root `composer.json` or
+`package.json` `license` is `proprietary` or `UNLICENSED` (a closed-source
+declaration). The check drops out of the score numerator and denominator.
+`"private": true` and Cargo `publish = false` do not do this. A missing file
+next to an SPDX id such as `MIT` still fails.
 **Fix:** add a LICENSE; required for open-source use and plugin marketplaces.
 
 #### HYG-06 · No secrets in harness files — 2 pts {#hyg-06}
@@ -596,10 +685,13 @@ package-lock.json, uv.lock, Cargo.lock, go.sum, or equivalent.
 tree everywhere.
 
 #### HYG-08 · MCP config uses env interpolation for credentials — 3 pts {#hyg-08}
-An MCP config file is valid, and any credential-shaped field (token, key,
-secret, password…) uses `${ENV_VAR}` interpolation rather than a literal.
-The positive complement to HYG-04 — a repo with no MCP setup earns nothing
-here, same as any other bonus check.
+When an MCP config exists (`.cursor/mcp.json`, `.mcp.json`,
+`.agents/mcp_config.json`), it is valid JSON, and any credential-shaped
+field (token, key, secret, password…) uses `${ENV_VAR}` interpolation rather
+than a literal. The positive complement to HYG-04.
+**Not applicable** when the repository has no MCP config. Not using MCP is
+not a missing interpolation setup, so the check drops out of the score
+numerator and denominator. Adding a config later makes it applicable again.
 **Fix:** reference secrets as `"${VAR_NAME}"` and document required
 variables in `.env.example`.
 

@@ -1,8 +1,18 @@
 import type { ScanContext } from '../types.js';
-import { CONTEXT_ROOT_FILES, type HarnessKind, specsForKind, type ToolId } from './registry.js';
+import { compareLexically } from '../util.js';
+import {
+  CLAUDE_PROJECT_GUIDE_PATHS,
+  CONTEXT_ROOT_FILES,
+  type HarnessKind,
+  matchPathSpec,
+  specsForKind,
+  type ToolId,
+} from './registry.js';
 
 export interface HarnessArtifact {
   path: string;
+  canonicalPath: string;
+  nativeDepth: number;
   toolId: ToolId;
   kind: HarnessKind;
 }
@@ -11,17 +21,17 @@ function collectByKind(ctx: ScanContext, kind: HarnessKind): HarnessArtifact[] {
   const seen = new Set<string>();
   const out: HarnessArtifact[] = [];
   for (const spec of specsForKind(kind)) {
-    for (const path of ctx.matching(spec.pathRegex)) {
-      if (seen.has(path)) continue;
-      seen.add(path);
-      out.push({ path, toolId: spec.toolId, kind });
+    for (const match of matchPathSpec(ctx, spec)) {
+      if (seen.has(match.path)) continue;
+      seen.add(match.path);
+      out.push({ ...match, toolId: spec.toolId, kind });
     }
   }
-  return out.sort((a, b) => a.path.localeCompare(b.path));
+  return out.sort((a, b) => compareLexically(a.path, b.path));
 }
 
 export function collectRules(ctx: ScanContext): HarnessArtifact[] {
-  return collectByKind(ctx, 'rules');
+  return collectByKind(ctx, 'rules').filter((a) => !CLAUDE_PROJECT_GUIDE_PATHS.has(a.path));
 }
 
 export function collectSkills(ctx: ScanContext): HarnessArtifact[] {
@@ -55,10 +65,12 @@ export function contextRootFile(ctx: ScanContext): string | null {
 export function detectHarnesses(ctx: ScanContext): ToolId[] {
   const tools = new Set<ToolId>();
   if (ctx.has('GEMINI.md')) tools.add('antigravity');
-  if (ctx.has('CLAUDE.md')) tools.add('claude-code');
+  if (ctx.has('CLAUDE.md') || ctx.has('.claude/CLAUDE.md') || ctx.has('.claude/AGENTS.md')) {
+    tools.add('claude-code');
+  }
   for (const kind of ['rules', 'skills', 'commands', 'subagents', 'hooks', 'mcp'] as HarnessKind[]) {
     for (const spec of specsForKind(kind)) {
-      if (ctx.matching(spec.pathRegex).length > 0) tools.add(spec.toolId);
+      if (matchPathSpec(ctx, spec).length > 0) tools.add(spec.toolId);
     }
   }
   return [...tools].sort();

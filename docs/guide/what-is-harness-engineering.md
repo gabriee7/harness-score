@@ -9,14 +9,15 @@ output, the gates that stop it from doing something destructive. That
 surrounding machinery is the **harness**, and building it deliberately is
 **harness engineering**.
 
-The term crystallized in early 2026. Martin Fowler's site published
+The term crystallized in early 2026. Birgitta Böckeler published
 [Harness engineering for coding agent users](https://martinfowler.com/articles/harness-engineering.html)
-(building on an earlier
-[memo](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html)),
-framing the discipline for teams that *use* agents. Around the same time,
-LangChain showed the other side of the coin: by improving only the harness of
-their coding agent — never touching the model — they moved from **52.8% to
-66.5%** on Terminal Bench 2.0, from outside the top 30 to top 5
+on Martin Fowler's site (building on her earlier
+[memo](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html)
+in the *Exploring Gen AI* series), framing the discipline for teams that
+*use* agents. Around the same time, LangChain showed the other side of the
+coin: by improving only the harness of their coding agent — never touching
+the model — they moved from **52.8% to 66.5%** on Terminal Bench 2.0, from
+outside the top 30 to top 5
 ([Improving Deep Agents with harness engineering](https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering)).
 
 The core insight from both: **reliability is a property of the whole
@@ -26,15 +27,20 @@ frontier model dangerous.
 
 ## Guides and Sensors
 
-Fowler's framework splits harness controls into two families, borrowed from
-control theory:
+Böckeler's framework splits harness controls into two families, drawn from
+cybernetics and control systems:
 
 | | **Guides** (feedforward) | **Sensors** (feedback) |
 |---|---|---|
 | When | *Before* the agent acts | *After* the agent acts |
 | Purpose | Steer toward good outcomes | Detect and correct bad ones |
-| Cursor examples | `AGENTS.md`, rules, skills, commands, MCP context | tests, linters, type checkers, CI, hooks |
+| Examples (tool-agnostic) | `AGENTS.md`, rules, skills, commands, MCP context | tests, linters, type checkers, CI, hooks |
 | Failure mode when missing | Agent guesses your conventions | Agent ships mistakes confidently |
+
+The principles are the same across Cursor, Claude Code, Windsurf, and any other
+AI coding tool — what differs is *where* you configure them (different directories
+and frontmatter formats), not *what* you're building. Harness Score recognizes
+these tool-specific variants via OR semantics, so your harness works everywhere.
 
 A harness needs both. Guides without sensors produce confident, unverified
 output. Sensors without guides catch the same mistakes over and over because
@@ -42,7 +48,7 @@ the agent was never told how to avoid them.
 
 ## Computational vs. inferential checks
 
-Fowler draws a second distinction that this guide — and the `harness-score`
+Böckeler draws a second distinction that this guide — and the `harness-score`
 scanner — takes seriously:
 
 - **Computational checks** are deterministic: linters, type checkers, tests,
@@ -84,8 +90,9 @@ about.
 
 ## Harnessability: some codebases are easier to harness
 
-Fowler calls out **ambient affordances** — properties of the environment that
-make agents more governable:
+Böckeler frames this as **harnessability**. Her colleague Ned Letcher's term
+**ambient affordances** — which she quotes — names properties of the
+environment that make agents more governable:
 
 - **Typed languages** give every edit a free, instant sensor (the compiler).
 - **Clear module boundaries** shrink the context an agent needs per task.
@@ -104,6 +111,6 @@ the same control system.
   [Guides](/guide/guides-feedforward), [Sensors](/guide/sensors-feedback), and
   [Guardrails](/guide/guardrails-and-safety).
 - Chapter 6 defines a [five-level maturity model](/guide/maturity-model) with
-  an objective rubric.
+  an objective maturity model.
 - Chapter 7 shows how to [measure and improve](/guide/measure-and-improve)
   with the `harness-score` scanner and the Cursor plugin.

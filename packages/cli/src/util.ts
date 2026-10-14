@@ -1,5 +1,10 @@
 const BLOCK_SCALAR_RE = /^([|>])([+-]?)$/;
 
+/** Locale-independent code-point ordering for deterministic path tie-breakers. */
+export function compareLexically(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function leadingWhitespace(line: string): number {
   return line.match(/^\s*/)![0].length;
 }

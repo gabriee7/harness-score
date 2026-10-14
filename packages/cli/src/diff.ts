@@ -1,4 +1,5 @@
 import type { DimensionId, Report } from './types.js';
+import { reportScopeIsComplete } from './verdict.js';
 
 export interface DimensionDelta {
   id: DimensionId;
@@ -12,7 +13,7 @@ export interface CheckDelta {
   id: string;
   title: string;
   points: number;
-  change: 'newly-passing' | 'newly-failing';
+  change: 'newly-passing' | 'newly-failing' | 'became-applicable' | 'became-not-applicable';
 }
 
 export interface ReportDiff {
@@ -27,25 +28,62 @@ export interface ReportDiff {
   dimensions: DimensionDelta[];
   checksChanged: CheckDelta[];
   /**
-   * True when baseline and current come from different tool versions (or
-   * the rubric's point total changed) — dimension/score deltas may then
-   * reflect a rubric change rather than an actual change in the repository.
+   * True when baseline and current come from different tool versions or the
+   * check catalog (ids or point values) differs. A scan `score.max` that moved
+   * only because a check became applicable or not applicable is a repository
+   * change, not a maturity-model change.
    */
-  rubricChanged: boolean;
+  maturityModelChanged: boolean;
+  /**
+   * True when the team customization (`.harness-score.json`'s `extends`/`rules`) actually
+   * applied differs between baseline and current — dimension/score deltas may then reflect
+   * a config change rather than an actual change in the repository.
+   */
+  presetChanged: boolean;
+}
+
+/** Baselines saved by pre-v1.5 tool versions have no `preset` field at all. */
+const EMPTY_PRESET: Report['preset'] = { extends: [], rules: {}, resolved: [] };
+
+/** Missing `applicable` on pre-v1.8 reports means the check was scored. */
+function isApplicable(check: { applicable?: boolean }): boolean {
+  return check.applicable !== false;
+}
+
+function catalogShape(checks: Array<{ id: string; points: number }>): string {
+  return [...checks]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((check) => `${check.id}:${check.points}`)
+    .join('|');
 }
 
 /**
- * Compares two reports from the same rubric version. Checks present in
- * `current` but absent from `baseline` (e.g. the rubric grew a check between
- * scans) are ignored for the pass/fail delta — that's a rubric change, not a
+ * Compares two reports from the same maturity model version. Checks present in
+ * `current` but absent from `baseline` (e.g. the model gained a check between
+ * scans) are ignored for the pass/fail delta — that's a maturity model change, not a
  * regression or improvement in the scanned repository.
  */
 export function computeDiff(baseline: Report, current: Report): ReportDiff {
+  if (!reportScopeIsComplete(baseline, 'maturity') || !reportScopeIsComplete(current, 'maturity')) {
+    throw new Error('Cannot compare incomplete maturity reports.');
+  }
   const baselineChecks = new Map(baseline.checks.map((c) => [c.id, c]));
   const checksChanged: CheckDelta[] = [];
   for (const check of current.checks) {
     const before = baselineChecks.get(check.id);
-    if (!before || before.passed === check.passed) continue;
+    if (!before) continue;
+    const beforeApplicable = isApplicable(before);
+    const afterApplicable = isApplicable(check);
+    if (beforeApplicable !== afterApplicable) {
+      checksChanged.push({
+        id: check.id,
+        title: check.title,
+        points: check.points,
+        change: afterApplicable ? 'became-applicable' : 'became-not-applicable',
+      });
+      continue;
+    }
+    if (!afterApplicable || before.passed === check.passed) continue;
     checksChanged.push({
       id: check.id,
       title: check.title,
@@ -82,6 +120,10 @@ export function computeDiff(baseline: Report, current: Report): ReportDiff {
     },
     dimensions,
     checksChanged,
-    rubricChanged: baseline.tool.version !== current.tool.version || baseline.score.max !== current.score.max,
+    maturityModelChanged:
+      baseline.tool.version !== current.tool.version ||
+      catalogShape(baseline.checks) !== catalogShape(current.checks),
+    presetChanged:
+      JSON.stringify(baseline.preset ?? EMPTY_PRESET) !== JSON.stringify(current.preset ?? EMPTY_PRESET),
   };
 }

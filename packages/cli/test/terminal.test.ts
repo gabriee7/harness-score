@@ -1,16 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import type { ReportDiff } from '../src/diff.js';
 import { renderTerminal } from '../src/report/terminal.js';
-import type { CheckResult, DimensionScore, Report } from '../src/types.js';
+import type { CheckResult, DimensionScore, Report, ScoreSnapshot } from '../src/types.js';
 import { DIMENSIONS } from '../src/types.js';
 
-function makeDimensions(overrides: Partial<Record<string, number>> = {}): DimensionScore[] {
+function makeDimensions(
+  overrides: Partial<Record<string, number>> = {},
+  applicableOverrides: Partial<Record<string, boolean>> = {},
+): DimensionScore[] {
   return DIMENSIONS.map((d) => ({
     id: d.id,
     title: d.title,
     earned: overrides[d.id] ?? 0,
     max: 20,
     percent: overrides[d.id] ?? 0,
+    applicable: applicableOverrides[d.id] ?? true,
   }));
 }
 
@@ -25,19 +29,38 @@ function makeCheck(overrides: Partial<CheckResult> = {}): CheckResult {
     evidence: 'No AGENTS.md found.',
     remediation: 'Create an AGENTS.md.',
     docsUrl: 'https://paladini.github.io/harness-score/guide/measure-and-improve#ctx-01',
+    severity: 'error',
+    applicable: true,
+    ...overrides,
+  };
+}
+
+function makeSnapshot(overrides: Partial<ScoreSnapshot> = {}): ScoreSnapshot {
+  return {
+    level: { index: 1, name: 'Documented', nextLevelGaps: [], capped: false },
+    score: { earned: 50, max: 108, percent: 46 },
+    dimensions: makeDimensions(),
+    checks: [makeCheck()],
+    detectedHarnesses: [],
     ...overrides,
   };
 }
 
 function makeReport(overrides: Partial<Report> = {}): Report {
+  const snapshot = makeSnapshot();
   return {
     tool: { name: 'harness-score', version: '0.3.0' },
     root: '/fake',
     truncated: false,
-    level: { index: 1, name: 'Documented', nextLevelGaps: [] },
-    score: { earned: 50, max: 108, percent: 46 },
-    dimensions: makeDimensions(),
-    checks: [makeCheck()],
+    scopes: { maturity: ['repo'], effective: ['repo'] },
+    gate: 'maturity',
+    detectedHarnesses: [],
+    level: snapshot.level,
+    score: snapshot.score,
+    dimensions: snapshot.dimensions,
+    checks: snapshot.checks,
+    effective: snapshot,
+    preset: { extends: [], rules: {}, resolved: [] },
     ...overrides,
   };
 }
@@ -53,15 +76,42 @@ function makeDiff(overrides: Partial<ReportDiff> = {}): ReportDiff {
     },
     dimensions: DIMENSIONS.map((d) => ({ id: d.id, title: d.title, before: 0, after: 0, delta: 0 })),
     checksChanged: [],
-    rubricChanged: false,
+    maturityModelChanged: false,
+    presetChanged: false,
     ...overrides,
   };
 }
 
 describe('renderTerminal', () => {
-  test('shows the truncated-scan banner only when report.truncated is true', () => {
-    expect(renderTerminal(makeReport({ truncated: true }))).toContain('Scan stopped early');
-    expect(renderTerminal(makeReport({ truncated: false }))).not.toContain('Scan stopped early');
+  test('renders legacy truncated reports as incomplete without an authoritative level', () => {
+    const incomplete = renderTerminal(makeReport({ truncated: true }));
+    expect(incomplete).toContain('Maturity: unavailable - incomplete scan');
+    expect(incomplete).toContain('maturity: file-count-limit');
+    expect(incomplete).toContain('Provisional dimensions:');
+    expect(incomplete).not.toContain('Maturity: L1');
+    expect(renderTerminal(makeReport({ truncated: false }))).not.toContain('Incomplete scan');
+  });
+
+  test('keeps maturity authoritative when only the requested effective scope is incomplete', () => {
+    const out = renderTerminal(
+      makeReport({
+        truncated: true,
+        scopes: { maturity: ['repo'], effective: ['repo', 'team'] },
+        verdicts: {
+          maturity: { status: 'complete', reasons: [] },
+          effective: {
+            status: 'incomplete',
+            reasons: [{ code: 'depth-limit', path: 'team:deep', limit: 8 }],
+          },
+        },
+      }),
+    );
+    expect(out).toContain('Maturity: L1');
+    expect(out).toContain('Effective: unavailable - incomplete scan');
+    expect(out).toContain('Effective scan incomplete · provisional effective results are not authoritative.');
+    expect(out).toContain('effective: depth-limit at team:deep (limit 8)');
+    expect(out).not.toContain('Maturity scan incomplete');
+    expect(out).not.toContain('Provisional dimensions:');
   });
 
   test('shows "fully harnessed" when every check passed', () => {
@@ -80,19 +130,108 @@ describe('renderTerminal', () => {
     expect(out).toContain('measure-and-improve#ctx-01');
   });
 
+  test('renders additive check warnings with code and source', () => {
+    const report = makeReport({
+      checks: [
+        makeCheck({
+          passed: true,
+          warnings: [
+            {
+              code: 'unknown-hook-event',
+              message: 'FutureEvent is not cataloged.',
+              source: '.claude/settings.json',
+            },
+          ],
+        }),
+      ],
+    });
+    const out = renderTerminal(report);
+    expect(out).toContain('Warnings (1):');
+    expect(out).toContain('unknown-hook-event');
+    expect(out).toContain('.claude/settings.json');
+  });
+
+  test('shows detected harnesses with display names, only when non-empty', () => {
+    const detected = makeReport({ detectedHarnesses: ['cursor', 'claude-code', 'devin'] });
+    expect(renderTerminal(detected)).toContain('Detected: Cursor, Claude Code, Devin');
+
+    expect(renderTerminal(makeReport({ detectedHarnesses: [] }))).not.toContain('Detected:');
+  });
+
+  test('unknown tool ids in detectedHarnesses pass through as-is', () => {
+    const out = renderTerminal(makeReport({ detectedHarnesses: ['some-future-tool'] }));
+    expect(out).toContain('Detected: some-future-tool');
+  });
+
   test('shows next-level gaps only when present', () => {
     const withGaps = makeReport({
-      level: { index: 1, name: 'Documented', nextLevelGaps: ['context ≥ 60%'] },
+      level: { index: 1, name: 'Documented', nextLevelGaps: ['context ≥ 60%'], capped: false },
     });
     expect(renderTerminal(withGaps)).toContain('To reach L2:');
 
-    const noGaps = makeReport({ level: { index: 4, name: 'Self-correcting', nextLevelGaps: [] } });
+    const noGaps = makeReport({
+      level: { index: 4, name: 'Self-correcting', nextLevelGaps: [], capped: false },
+    });
     expect(renderTerminal(noGaps)).not.toContain('To reach L');
   });
 
-  test('diff section warns when rubricChanged is true', () => {
-    const out = renderTerminal(makeReport(), makeDiff({ rubricChanged: true }));
+  test('shows a capped marker and capReason when the level is capped', () => {
+    const out = renderTerminal(
+      makeReport({
+        level: {
+          index: 3,
+          name: 'Sensing',
+          nextLevelGaps: ['hooks ≥ 70%'],
+          capped: true,
+          capReason:
+            'L4 requires hooks ≥ 70%, which is not reachable: the "hooks" dimension has no applicable checks.',
+        },
+      }),
+    );
+    expect(out).toContain('(capped)');
+    expect(out).toContain('not reachable');
+  });
+
+  test('renders an excluded-by-preset marker for a non-applicable dimension instead of a bar', () => {
+    const out = renderTerminal(
+      makeReport({
+        dimensions: makeDimensions({}, { hooks: false }),
+      }),
+    );
+    expect(out).toContain('excluded by preset');
+  });
+
+  test('shows a preset disclosure line only when preset.resolved is non-empty', () => {
+    const withPreset = makeReport({
+      preset: {
+        extends: ['no-hooks'],
+        rules: {},
+        resolved: [{ id: 'HKS-01', severity: 'off', source: 'extends:no-hooks' }],
+      },
+    });
+    expect(renderTerminal(withPreset)).toContain('Preset:');
+    expect(renderTerminal(withPreset)).toContain('no-hooks');
+
+    expect(renderTerminal(makeReport())).not.toContain('Preset:');
+  });
+
+  test('an off-severity failing check is excluded from Improvements', () => {
+    const report = makeReport({
+      checks: [makeCheck({ id: 'HKS-01', passed: false, severity: 'off' }), makeCheck({ passed: true })],
+    });
+    const out = renderTerminal(report);
+    expect(out).not.toContain('HKS-01');
+    expect(out).toContain('fully harnessed');
+  });
+
+  test('diff section warns when maturityModelChanged is true', () => {
+    const out = renderTerminal(makeReport(), makeDiff({ maturityModelChanged: true }));
     expect(out).toContain('Baseline is from a different tool version');
+  });
+
+  test('diff section warns when presetChanged is true', () => {
+    const out = renderTerminal(makeReport(), makeDiff({ presetChanged: true }));
+    expect(out).toContain('Baseline used a different extends/rules config');
   });
 
   test('diff section renders only non-zero dimension deltas', () => {
@@ -128,6 +267,27 @@ describe('renderTerminal', () => {
     const out = renderTerminal(makeReport(), diff);
     expect(out).toContain('Newly failing:');
     expect(out).not.toContain('Newly passing:');
+  });
+
+  test('not-applicable checks are listed apart from improvements', () => {
+    const out = renderTerminal(
+      makeReport({
+        checks: [
+          makeCheck({ id: 'HYG-01', passed: false }),
+          makeCheck({
+            id: 'HYG-08',
+            points: 3,
+            applicable: false,
+            evidence: 'No MCP config is in use; HYG-08 does not apply.',
+          }),
+        ],
+      }),
+    );
+    expect(out).toContain('Improvements (1)');
+    expect(out).toContain('HYG-01');
+    expect(out).toContain('Not applicable (1)');
+    expect(out).toContain('HYG-08 does not apply');
+    expect(out).not.toContain('(+3 pts)');
   });
 
   test('diff section shows "No change." when nothing changed at all', () => {

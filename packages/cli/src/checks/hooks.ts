@@ -8,39 +8,57 @@ export const hookChecks: Check[] = [
     title: 'Hooks configuration present and valid JSON',
     points: 4,
     remediation:
-      'Create a hooks configuration (.cursor/hooks.json or .claude/settings.json hooks key) — hooks are the harness layer that can observe and control the agent loop deterministically.',
+      'Create a hooks configuration (.cursor/hooks.json, .claude/settings.json hooks key, .devin/hooks.v1.json event map, or .devin/config.json hooks key) — hooks are the harness layer that can observe and control the agent loop deterministically.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
         return {
           passed: false,
-          evidence: 'No .cursor/hooks.json or .claude/settings.json hooks configuration found.',
+          evidence:
+            'No .cursor/hooks.json, .claude/settings.json hooks key, plugin hooks/hooks.json, .devin/hooks.v1.json, or .devin/config.json hooks key found.',
         };
       }
-      return { passed: true, evidence: `${hooks.source} parses as JSON.` };
+      if (!hooks.hasEventMap) {
+        return {
+          passed: false,
+          evidence: `${hooks.source}: ${hooks.structuralErrors[0] ?? 'hooks object is missing.'}`,
+          warnings: hooks.selectionWarnings,
+        };
+      }
+      return {
+        passed: true,
+        evidence: `${hooks.source} contains a parseable hooks configuration.`,
+        warnings: hooks.selectionWarnings,
+      };
     },
   },
   {
     id: 'HKS-02',
     dimension: 'hooks',
-    title: 'Hooks use known events and a version field',
+    title: 'Hook events and handlers are structurally valid',
     points: 2,
     remediation:
-      'Register handlers only on documented events for your tool (Cursor: beforeShellExecution, afterFileEdit, …; Claude Code: PreToolUse, PostToolUse, …) — typos fail silently.',
+      'Declare at least one structurally valid hook event and every metadata field required by your tool; unrecognized future events are reported as warnings.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
         return { passed: false, evidence: 'No parseable hooks configuration.' };
       }
-      const passed = hooks.hasVersion && hooks.events.length > 0 && hooks.unknownEvents.length === 0;
+      const passed =
+        hooks.versionRequirement !== 'missing' &&
+        hooks.events.length > 0 &&
+        hooks.structuralErrors.length === 0;
       return {
         passed,
         evidence:
           hooks.events.length === 0
             ? `${hooks.source} has no registered events.`
-            : hooks.unknownEvents.length > 0
-              ? `Unknown event name(s): ${hooks.unknownEvents.join(', ')}`
-              : `${hooks.source}: events: ${hooks.events.join(', ')}.`,
+            : hooks.structuralErrors.length > 0
+              ? `${hooks.source}: ${hooks.structuralErrors.join(' ')}`
+              : hooks.versionRequirement === 'missing'
+                ? `${hooks.source} is missing required version metadata.`
+                : `${hooks.source}: events: ${hooks.events.join(', ')}.`,
+        warnings: hooks.eventWarnings,
       };
     },
   },
@@ -50,7 +68,7 @@ export const hookChecks: Check[] = [
     title: 'Gate hook guards risky operations',
     points: 4,
     remediation:
-      'Register a gate hook (Cursor: beforeShellExecution / beforeMCPExecution / preToolUse; Claude Code: PreToolUse) that returns allow/deny/ask for destructive operations.',
+      'Register a gate hook (Cursor: beforeShellExecution / beforeMCPExecution / preToolUse / beforeReadFile; Claude Code or Devin: PreToolUse / PermissionRequest) that guards destructive operations.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
@@ -70,7 +88,7 @@ export const hookChecks: Check[] = [
     title: 'Feedback hook observes agent output',
     points: 2,
     remediation:
-      'Register a feedback hook (Cursor: afterFileEdit / postToolUse / stop; Claude Code: PostToolUse) — e.g. auto-format edited files or run a quick lint.',
+      'Register a feedback hook (Cursor: afterFileEdit / postToolUse / stop; Claude Code: PostToolUse; Devin: PostToolUse / Stop) — e.g. auto-format edited files or run a quick lint.',
     run(ctx) {
       const hooks = readNormalizedHooks(ctx);
       if (!hooks) {
@@ -100,9 +118,14 @@ export const hookChecks: Check[] = [
         return { passed: false, evidence: 'No parseable hooks configuration.' };
       }
       if (hooks.commands.length === 0) {
-        return { passed: false, evidence: 'No hook commands declared.' };
+        return hooks.handlerCount > 0
+          ? {
+              passed: true,
+              evidence: 'Valid non-command hook handlers declare no repository scripts to resolve.',
+            }
+          : { passed: false, evidence: 'No valid hook handlers declared.' };
       }
-      const { validated, missing } = hookCommandPathsResolve(hooks.commands, (p) => ctx.has(p));
+      const { validated, missing } = hookCommandPathsResolve(hooks.commands, ctx);
       if (validated === 0) {
         return {
           passed: true,
@@ -112,9 +135,9 @@ export const hookChecks: Check[] = [
       return missing.length === 0
         ? {
             passed: true,
-            evidence: `All ${validated} path-referencing hook command(s) resolve to committed files.`,
+            evidence: `All ${validated} repository path reference(s) resolve to committed files.`,
           }
-        : { passed: false, evidence: `Hook command(s) reference missing files: ${missing.join(' | ')}` };
+        : { passed: false, evidence: `Hook command path(s) reference missing files: ${missing.join(' | ')}` };
     },
   },
 ];

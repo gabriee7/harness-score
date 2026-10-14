@@ -1,0 +1,239 @@
+# Metrics & Codes Reference
+
+Dense cheat sheet for everything `harness-score` reports: scores, scopes,
+levels, dimensions, check IDs, configuration keys, CLI flags, Action inputs,
+and JSON fields. Remediation recipes live in
+[chapter 8 — Measure & Improve](./measure-and-improve#the-check-catalog).
+
+## Scores: maturity vs effective
+
+| Code | What it includes | Used for |
+|---|---|---|
+| **maturity** | Repository files only (`scopes: repo`) | Default CI gate, badge, `--min-level`, official team maturity |
+| **effective** | Repo ∪ configured global/extra scopes | Local “what the agent sees on this machine” when user/system harness is enabled |
+
+When no extra scopes are configured, `effective` equals `maturity` (same level,
+score, and checks). The report always includes both blocks for stable JSON.
+
+Set which score gates CI with `gate` in config, `--gate`, or the Action `gate`
+input (`maturity` default).
+
+## Scopes
+
+| Scope | Meaning | What is scanned |
+|---|---|---|
+| `repo` | Always on | The directory you pass to `harness-score` (default `.`). When the scan root is a Claude Code or Cursor **plugin repository** (`.claude-plugin/plugin.json` or `.cursor-plugin/plugin.json` at the root), default plugin `skills/`, `commands/`, `agents/`, and `hooks/hooks.json` count like `.claude/...` / `.cursor/...`. |
+| `user` | Opt-in | Allowlisted user-level paths mapped to repo-relative shapes: `~/.cursor/*`, `~/.claude/*`, user-scoped Claude Code plugins from `~/.claude/plugins/installed_plugins.json`, `~/.codeium/windsurf/*` (Windsurf global rules alias), `~/Documents/Cline/Rules` → `.clinerules/`, `~/.continue/{rules,prompts}`, `~/.agents/*`, `~/.zed/commands`, `~/.config/opencode/agents`, global MCP/hooks configs, etc. See [multi-harness — user-scope by tool](./multi-harness#user-scope-by-tool). **Not included:** Copilot global (repo-only), Continue inline rules in `config.yaml`, IDE-only Cursor User Rules, Cursor user plugin cache (v1). |
+| `system` | Opt-in | Reserved for validated system-wide installs (minimal in v1) |
+| `extraRoots` | Opt-in | Additional directories (relative or absolute) whose tree mirrors harness layout — e.g. a shared team harness checkout |
+
+Project files **win** over overlay paths on conflict (same relative path).
+
+**Not scanned:** Cursor User Rules stored only in the IDE UI (not on disk),
+arbitrary home-directory walks, or secrets content in evidence strings.
+
+## Levels (L0–L4)
+
+Official level names apply to **maturity** unless you set `gate: effective`.
+
+| Level | Name | Requirements (all previous levels +) |
+|---|---|---|
+| L0 | Unharnessed | — |
+| L1 | Documented | context ≥ 40% |
+| L2 | Guided | context ≥ 60%; skills ≥ 30% **or** hooks ≥ 30%; hygiene ≥ 50% |
+| L3 | Sensing | sensors ≥ 60%; ci ≥ 50% |
+| L4 | Self-correcting | hooks ≥ 70%; total ≥ 80% |
+
+Full narrative: [The Maturity Model](./maturity-model).
+
+## Dimensions
+
+| ID | Title | Max pts | Measures |
+|---|---|---|---|
+| `context` | Context & Guides | 20 | AGENTS.md, scoped rules, README |
+| `skills` | Skills & Commands | 17 | Skills, commands/workflows, subagents |
+| `hooks` | Hooks & Guardrails | 14 | Cursor, Claude Code, and Devin hook configurations |
+| `sensors` | Sensors & Feedback | 20 | Tests, linter, types, formatter |
+| `ci` | CI Feedback | 14 | Pipeline, pre-commit |
+| `hygiene` | Hygiene & Safety | 23 | .gitignore, secrets, lockfile, license, MCP hygiene |
+
+**Total:** 108 points when every check applies. A scan's `score.max` is lower when a check is not applicable (`checks[].applicable` is `false`) or set to `"off"`.
+
+## Check catalog
+
+Stable IDs — linked to remediation in [Measure & Improve](./measure-and-improve#the-check-catalog).
+
+### Context & Guides
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| CTX-01 | 4 | Root `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`, or `.claude/CLAUDE.md` / `.claude/AGENTS.md` | [ctx-01](./measure-and-improve#ctx-01) |
+| CTX-02 | 3 | Context file has ≥20 meaningful lines and ≥2 headings | [ctx-02](./measure-and-improve#ctx-02) |
+| CTX-03 | 4 | At least one scoped rule file (any supported tool), `.claude/rules/**/*.md`, or nested context file in a code subdirectory | [ctx-03](./measure-and-improve#ctx-03) |
+| CTX-04 | 3 | Every rule declares activation metadata in frontmatter | [ctx-04](./measure-and-improve#ctx-04) |
+| CTX-05 | 2 | Not every rule is blanket always-on | [ctx-05](./measure-and-improve#ctx-05) |
+| CTX-06 | 2 | No single rule file exceeds 500 lines | [ctx-06](./measure-and-improve#ctx-06) |
+| CTX-07 | 1 | `README.md` at repository root | [ctx-07](./measure-and-improve#ctx-07) |
+| CTX-08 | 1 | No legacy `.cursorrules` without modern scoped rules | [ctx-08](./measure-and-improve#ctx-08) |
+
+### Skills & Commands
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| SKL-01 | 4 | At least one `SKILL.md` under a recognized skills directory | [skl-01](./measure-and-improve#skl-01) |
+| SKL-02 | 3 | Every skill has `name:` and `description:` in frontmatter | [skl-02](./measure-and-improve#skl-02) |
+| SKL-03 | 3 | Command/workflow files exist for any supported tool | [skl-03](./measure-and-improve#skl-03) |
+| SKL-04 | 2 | Skill descriptions are ≥40 characters | [skl-04](./measure-and-improve#skl-04) |
+| AGT-01 | 3 | At least one subagent markdown file | [agt-01](./measure-and-improve#agt-01) |
+| AGT-02 | 2 | Every subagent has `name:` and `description:` frontmatter | [agt-02](./measure-and-improve#agt-02) |
+
+### Hooks & Guardrails
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| HKS-01 | 4 | A Cursor, Claude Code, or Devin hooks config exists and parses as JSON | [hks-01](./measure-and-improve#hks-01) |
+| HKS-02 | 2 | Hook events and typed handlers are structurally valid; unknown valid events warn | [hks-02](./measure-and-improve#hks-02) |
+| HKS-03 | 4 | A gate-class hook is registered (shell/MCP/read/tool gate) | [hks-03](./measure-and-improve#hks-03) |
+| HKS-04 | 2 | A feedback-class hook is registered (post-edit/tool) | [hks-04](./measure-and-improve#hks-04) |
+| HKS-05 | 2 | Every local path in command executables and args exists; non-command handlers are N/A | [hks-05](./measure-and-improve#hks-05) |
+
+### Sensors & Feedback
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| SNS-01 | 6 | Test runner configured (`package.json` script, pytest, phpunit.xml, pest, go test, node --test, …) | [sns-01](./measure-and-improve#sns-01) |
+| SNS-02 | 5 | Linter configured (eslint, biome, ruff, phpcs, rector, golangci-lint, …) | [sns-02](./measure-and-improve#sns-02) |
+| SNS-03 | 4 | Type checking configured (tsconfig, mypy, pyright, ty, phpstan, psalm, …) | [sns-03](./measure-and-improve#sns-03) |
+| SNS-04 | 3 | Formatter configured (prettier, black, pint, php-cs-fixer, gofmt, …) | [sns-04](./measure-and-improve#sns-04) |
+| SNS-05 | 2 | At least one test file exists in the tree | [sns-05](./measure-and-improve#sns-05) |
+
+### CI Feedback
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| CI-01 | 4 | CI pipeline file present (GitHub Actions, GitLab CI, …) | [ci-01](./measure-and-improve#ci-01) |
+| CI-02 | 4 | CI executes test commands (phpunit, pest, …; resolves referenced Composer script bodies; ignores step labels) | [ci-02](./measure-and-improve#ci-02) |
+| CI-03 | 3 | CI executes lint or typecheck commands (phpstan, pint, phpcs, …; resolves referenced Composer script bodies; ignores step labels) | [ci-03](./measure-and-improve#ci-03) |
+| CI-04 | 3 | Pre-commit or git hook tooling installed | [ci-04](./measure-and-improve#ci-04) |
+
+### Hygiene & Safety
+
+| ID | Pts | Analyzes exactly | Remediation |
+|---|---|---|---|
+| HYG-01 | 2 | `.gitignore` present | [hyg-01](./measure-and-improve#hyg-01) |
+| HYG-02 | 3 | `.gitignore` covers environment files | [hyg-02](./measure-and-improve#hyg-02) |
+| HYG-03 | 4 | No unprotected `.env` files (without `.env.example` pattern) | [hyg-03](./measure-and-improve#hyg-03) |
+| HYG-04 | 4 | MCP JSON configs contain no inline credential patterns | [hyg-04](./measure-and-improve#hyg-04) |
+| HYG-05 | 2 | `LICENSE` file present | [hyg-05](./measure-and-improve#hyg-05) |
+| HYG-06 | 2 | No credential-like signatures in harness markdown/JSON | [hyg-06](./measure-and-improve#hyg-06) |
+| HYG-07 | 3 | Dependency lockfile committed | [hyg-07](./measure-and-improve#hyg-07) |
+| HYG-08 | 3 | MCP configs use env interpolation for secrets | [hyg-08](./measure-and-improve#hyg-08) |
+
+## Configuration file (`.harness-score.json`)
+
+Optional JSON at the scan root (strict schema — unknown keys error):
+
+```json
+{
+  "scopes": {
+    "user": false,
+    "system": false
+  },
+  "extraRoots": [
+    { "id": "team-shared", "path": "../shared-harness" }
+  ],
+  "gate": "maturity",
+  "extends": ["no-hooks"],
+  "rules": {
+    "HYG-05": "off"
+  }
+}
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `scopes.user` | boolean | `false` | Include user-level harness overlay |
+| `scopes.system` | boolean | `false` | Include system-level overlay |
+| `extraRoots` | `{ id, path }[]` | `[]` | Extra harness trees merged into effective |
+| `gate` | `"maturity"` \| `"effective"` | `"maturity"` | Which score `--min-level` uses |
+| `extends` | `string[]` | `[]` | Named presets to apply (see below) |
+| `rules` | `Record<checkId, severity>` | `{}` | Per-check severity override, applied after every preset in `extends` |
+
+Precedence: **CLI flags → Action inputs → config file → defaults**. `extends`/`rules` are config-file-only in this release — there is no `--extends`/`--rule` CLI flag or Action input equivalent yet; use `--config <path>` to point at a `.harness-score.json` that sets them.
+
+### Team customization: `extends` and `rules` {#team-customization}
+
+Borrowed straight from ESLint's own vocabulary, because it's a vocabulary most teams already know:
+
+- **`rules`** overrides a single check's severity by ID: `"HYG-05": "off"`. Severity is `"off"` or `"error"` in this release — `"error"` is the implicit default for every check, and `"off"` removes the check from **both** the numerator and the denominator of its dimension's score (it's structurally excluded, never scored as a failure). `"warn"` is a recognized value that's deliberately rejected today with a clear "not supported yet" error — it's reserved for a future advisory, non-blocking mode.
+- **`extends`** applies a named, maintainer-curated preset — a versioned, PR-reviewed bundle of `rules` overrides, not a free-form per-repo waiver. This preserves the same governance that already protects the check catalog: proposing a new preset goes through review (see [CONTRIBUTING.md](https://github.com/paladini/harness-score/blob/main/CONTRIBUTING.md#proposing-a-preset)), not a silent local opt-out. Presets in `extends` are applied in array order, and any explicit `rules` entry always wins over a preset.
+
+Every check excluded by `extends`/`rules` is always disclosed — in the terminal output (`Preset: ...` line), in the Markdown report (`**Preset:**` line and a `➖` status in the checks table), and in `--json`'s `preset` field — never silently hidden behind a flag.
+
+One exception, on purpose: `HYG-03`, `HYG-04`, and `HYG-06` — the checks that detect actively leaked or exposed credentials — can never be set to `"off"`, from either `rules` or a preset. Everything else in this config format leans on disclosure and PR review for integrity; these three are the one place that isn't negotiable.
+
+#### Built-in presets
+
+| Preset | Effect | Why |
+|---|---|---|
+| `no-hooks` {#preset-no-hooks} | Sets `HKS-01`–`HKS-05` (the whole Hooks & Guardrails dimension, 14 of 108 points) to `"off"` | For environments where local hook script execution is disallowed by policy — locked-down dev containers, regulated orgs, shared runners without permission to install hooks. Guardrails there are enforced in CI only. |
+
+Excluding an entire dimension has one honest consequence worth knowing up front: because **L4 · Self-correcting** is *defined* by runtime guardrail hooks (see the [Maturity Model](./maturity-model)), a repository under `no-hooks` can never reach L4 — the level becomes **capped**, not "failed." `report.level.capped` is `true` and `report.level.capReason` explains why; every other dimension's score is completely unaffected. This is the scanner staying honest about what "self-correcting" means, not a penalty for excluding hooks.
+
+## CLI flags (scan configuration)
+
+Repository maturity discovery has no production depth cap. It includes tracked,
+untracked, and ignored files after skipping known dependency and generated
+directories. `file-count-limit` represents an emergency 1,000,000-file fuse for
+the repository scan; bounded user and extra-root overlays can still report
+`depth-limit`. A discovered path that cannot be inspected when a check requests
+it reports `unreadable-path`; intentionally skipped bodies above 512 KiB do not.
+Internal symlinks are followed and deduplicated, while a target outside the scan
+root reports `outside-root-symlink` and is not traversed or read.
+
+| Flag | Meaning |
+|---|---|
+| `--config <file>` | Load config from a specific path |
+| `--scope user` | Enable user scope (comma-separated: `user`, `system`) |
+| `--gate maturity\|effective` | Score used for `--min-level` |
+| `--min-level <0-4>` | Exit 1 when a complete gated score is below level; an incomplete gated snapshot exits 2 |
+| `--json` | Full report including `scopes`, `gate`, `effective`, and `verdicts` |
+
+## GitHub Action inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| `include-user-harness` | `false` | Pass `--scope user` |
+| `include-system-harness` | `false` | Pass `--scope system` |
+| `gate` | `maturity` | Pass `--gate` |
+| `config` | `''` | Pass `--config` when set |
+| `min-level` | `0` | Fail when gated score is below level |
+
+Outputs: `level`, `level-name`, `percent` (maturity); `effective-level`, `effective-percent`.
+The Action publishes maturity outputs, badges, and reports only when maturity is complete, and effective outputs only when effective is complete. If only effective is incomplete, `gate: maturity` can pass with a warning; `gate: effective` exits 2. An incomplete maturity snapshot publishes no maturity outputs, badge, report, or PR comment.
+
+## Report JSON fields (stable)
+
+| Field | Description |
+|---|---|
+| `root` | Absolute scan root |
+| `scopes.maturity` | Always `["repo"]` |
+| `scopes.effective` | e.g. `["repo"]`, `["repo","user"]` |
+| `gate` | `"maturity"` or `"effective"` |
+| `resolvedRoots` | Optional list of `{ scope, absPath }` for overlays |
+| `level`, `score`, `dimensions`, `checks` | **Maturity** snapshot |
+| `effective` | Same shape: `{ level, score, dimensions, checks, detectedHarnesses }` |
+| `detectedHarnesses` | Tools seen in **repo** (informational) |
+| `verdicts.maturity`, `verdicts.effective` | Completeness status and deterministic reasons for each snapshot: `complete` or `incomplete` |
+| `verdicts.*.reasons[]` | `file-count-limit`, `depth-limit`, `unreadable-directory`, `unreadable-path`, or `outside-root-symlink`, with optional `path` and `limit` |
+| `truncated` | Compatibility alias; `true` when the maturity or effective snapshot is incomplete for any reason |
+| `preset` | `{ extends, rules, resolved }` — team customization actually applied; `resolved` lists only checks whose severity differs from the default |
+| `level.capped`, `level.capReason` | `capped` is `true` when a blocking requirement for the next level can never be met under the current config (e.g. its dimension was excluded by a preset); `capReason` explains why |
+| `dimensions[].applicable` | `false` when no check in that dimension is scored: every check is `"off"` and/or `checks[].applicable` is `false` |
+| `checks[].applicable` | `false` when the check does not apply to this repository (HYG-05 with a closed-source `license`, HYG-08 with no MCP config). Excluded from the numerator and denominator. Defaults to `true`. Omitted on older reports, which means applicable |
+| `checks[].severity` | `"off"` \| `"warn"` \| `"error"` — the resolved severity this scan used for that check |
+| `checks[].warnings` | Optional non-fatal diagnostics `{ code, message, source? }`; terminal and Markdown render them without changing points |
+
+`level`, `score`, dimensions, and checks remain present for diagnosis, but are provisional when their verdict is `incomplete`. Terminal and Markdown identify the unavailable snapshot. The badge always represents maturity and uses `incomplete`, never L0-L4, when maturity is incomplete. Old reports without `verdicts` are treated as complete when `truncated` is `false`, and incomplete when it is `true`.
+
+`--diff` compares **maturity** fields by default (top-level `level` / `score` / `checks`) and rejects an incomplete maturity baseline or current result. An incomplete effective snapshot does not block a maturity diff. A check moving between applicable and not applicable is its own delta (`became-applicable` / `became-not-applicable`), separate from newly passing or newly failing.
