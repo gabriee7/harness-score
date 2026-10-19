@@ -26,6 +26,16 @@ describe('parseConfigObject', () => {
     [{ extraRoots: [{ id: 'team', path: 'x', extra: true }] }, /unknown key/],
     [{ extraRoots: [{ id: '  ', path: 'x' }] }, /id must be a non-empty string/],
     [{ extraRoots: [{ id: 'team', path: '  ' }] }, /path must be a non-empty string/],
+    [{ scan: null }, /scan must be an object/],
+    [{ scan: { unknown: true } }, /unknown scan key/],
+    [{ scan: { includePaths: 'build/ci' } }, /scan.includePaths must be an array/],
+    [{ scan: { includePaths: [''] } }, /non-empty relative path/],
+    [{ scan: { includePaths: ['/build/ci'] } }, /exact repo-relative path/],
+    [{ scan: { includePaths: ['C:/build/ci'] } }, /exact repo-relative path/],
+    [{ scan: { includePaths: ['build\\ci'] } }, /exact repo-relative path/],
+    [{ scan: { includePaths: ['build/../ci'] } }, /path segments are not allowed/],
+    [{ scan: { includePaths: ['.git/config'] } }, /path segments are not allowed/],
+    [{ scan: { includePaths: ['build/*'] } }, /exact repo-relative path/],
     [{ extends: 'no-hooks' }, /extends must be an array/],
     [{ extends: [null] }, /extends\[0\]: must be a non-empty string/],
     [{ rules: [] }, /rules must be an object/],
@@ -50,12 +60,14 @@ describe('parseConfigObject', () => {
       parseConfigObject(
         {
           scopes: { user: true, system: false },
+          scan: { includePaths: ['build/ci/.golangci.yaml', 'build/ci'] },
           gate: 'effective',
           extraRoots: [{ id: 'team', path: '../shared' }],
         },
         'test',
       ),
     ).toEqual({
+      scan: { includePaths: ['build/ci', 'build/ci/.golangci.yaml'] },
       scopes: { user: true, system: false },
       extraRoots: [{ id: 'team', path: '../shared' }],
       gate: 'effective',
@@ -169,6 +181,15 @@ describe('resolveScanConfig precedence', () => {
     expect(resolved.scopes.system).toBe(false);
     expect(resolved.gate).toBe('effective');
     expect(resolved.effectiveScopes).toEqual(['repo']);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('config file include paths survive resolution when CLI flags are used', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hs-cfg-'));
+    const configPath = path.join(dir, '.harness-score.json');
+    fs.writeFileSync(configPath, JSON.stringify({ scan: { includePaths: ['build/ci'] } }), 'utf8');
+    const resolved = resolveScanConfig(dir, { configPath });
+    expect(resolved.scan?.includePaths).toEqual(['build/ci']);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

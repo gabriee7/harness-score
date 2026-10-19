@@ -215,6 +215,7 @@ export function buildReportFromContext(
     checks: maturity.checks,
     effective,
     preset: { extends: config.extends, rules: config.rules, resolved: resolvedEntries },
+    scan: { includePaths: config.scan?.includePaths ?? [] },
   };
 }
 
@@ -228,9 +229,11 @@ export function buildReport(rootInput: string, config?: ResolvedScanConfig): Rep
     effectiveScopes: ['repo'] as const,
     extends: [],
     rules: {},
+    scan: { includePaths: [] },
   };
 
-  const maturityCtx = createScanContext(root);
+  const includePaths = resolved.scan?.includePaths ?? [];
+  const maturityCtx = createScanContext(root, { includePaths });
   const hasExtraScopes = resolved.scopes.user || resolved.scopes.system || resolved.extraRoots.length > 0;
 
   if (!hasExtraScopes) {
@@ -238,7 +241,7 @@ export function buildReport(rootInput: string, config?: ResolvedScanConfig): Rep
   }
 
   const { overlays, resolvedRoots } = buildOverlays(root, resolved.scopes, resolved.extraRoots);
-  const effectiveCtx = createScanContext(root, { overlays });
+  const effectiveCtx = createScanContext(root, { overlays, includePaths });
   return buildReportFromContext(maturityCtx, effectiveCtx, resolved, resolvedRoots);
 }
 
@@ -251,6 +254,7 @@ export function buildReportFromScanContext(ctx: ScanContext): Report {
     effectiveScopes: ['repo'],
     extends: [],
     rules: {},
+    scan: { includePaths: [] },
   };
   return buildReportFromContext(ctx, ctx, defaultConfig, undefined);
 }

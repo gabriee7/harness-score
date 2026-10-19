@@ -322,6 +322,61 @@ describe('createScanContext — preserved safety boundaries', () => {
     expect(ctx.truncated).toBe(false);
   });
 
+  test('includes only explicit paths inside skipped directories and keeps nested skips', () => {
+    const root = mkTmpDir();
+    fs.mkdirSync(path.join(root, 'build', 'ci', 'node_modules', 'dep'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'build', 'output'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'build', 'ci', '.golangci.yaml'), 'version: 2');
+    fs.writeFileSync(path.join(root, 'build', 'ci', '.pre-commit-config.yaml'), 'repos: []');
+    fs.writeFileSync(path.join(root, 'build', 'ci', 'node_modules', 'dep', 'package.json'), '{}');
+    fs.writeFileSync(path.join(root, 'build', 'output', 'binary'), 'generated');
+
+    expect(createScanContext(root).files).toEqual([]);
+    const included = createScanContext(root, { includePaths: ['build/ci'] });
+    expect(included.files).toEqual(['build/ci/.golangci.yaml', 'build/ci/.pre-commit-config.yaml']);
+    expect(included.truncated).toBe(false);
+  });
+
+  test('an exact file include does not scan sibling files or generated directories', () => {
+    const root = mkTmpDir();
+    fs.mkdirSync(path.join(root, 'build', 'ci', 'node_modules'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'build', 'ci', '.golangci.yaml'), 'version: 2');
+    fs.writeFileSync(path.join(root, 'build', 'ci', 'unrelated.yml'), 'generated');
+    fs.writeFileSync(path.join(root, 'build', 'ci', 'node_modules', 'dependency.yml'), 'generated');
+
+    const included = createScanContext(root, { includePaths: ['build/ci/.golangci.yaml'] });
+    expect(included.files).toEqual(['build/ci/.golangci.yaml']);
+  });
+
+  test('missing include paths are harmless and included files still count toward the file limit', () => {
+    const root = mkTmpDir();
+    fs.mkdirSync(path.join(root, 'build', 'ci'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'build', 'ci', 'one.yml'), 'one');
+    fs.writeFileSync(path.join(root, 'build', 'ci', 'two.yml'), 'two');
+
+    expect(createScanContext(root, { includePaths: ['build/missing'] }).files).toEqual([]);
+    const limited = walkDirectory(root, { includePaths: ['build/ci'], maxFiles: 1 });
+    expect(limited.files).toHaveLength(1);
+    expect(limited.truncated).toBe(true);
+    expect(limited.incompleteReasons).toContainEqual({
+      code: 'file-count-limit',
+      path: 'build/ci/two.yml',
+      limit: 1,
+    });
+  });
+
+  test('keeps selected-path symlinks inside the scan root', () => {
+    const root = mkTmpDir();
+    const outside = mkTmpDir();
+    fs.mkdirSync(path.join(root, 'build', 'ci'), { recursive: true });
+    fs.writeFileSync(path.join(outside, 'secret.yml'), 'not in root');
+    fs.symlinkSync(outside, path.join(root, 'build', 'ci', 'linked'), 'junction');
+
+    const included = createScanContext(root, { includePaths: ['build/ci'] });
+    expect(included.files).toEqual([]);
+    expect(included.incompleteReasons).toEqual([{ code: 'outside-root-symlink', path: 'build/ci/linked' }]);
+  });
+
   test('reads exactly 512 KiB but intentionally ignores larger file bodies', () => {
     const root = mkTmpDir();
     const atLimit = 'a'.repeat(512 * 1024);

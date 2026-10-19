@@ -135,6 +135,9 @@ Optional JSON at the scan root (strict schema — unknown keys error):
 
 ```json
 {
+  "scan": {
+    "includePaths": ["build/ci"]
+  },
   "scopes": {
     "user": false,
     "system": false
@@ -155,11 +158,14 @@ Optional JSON at the scan root (strict schema — unknown keys error):
 | `scopes.user` | boolean | `false` | Include user-level harness overlay |
 | `scopes.system` | boolean | `false` | Include system-level overlay |
 | `extraRoots` | `{ id, path }[]` | `[]` | Extra harness trees merged into effective |
+| `scan.includePaths` | `string[]` | `[]` | Exact repo-relative files/directories to scan inside normally skipped directories; no globs |
 | `gate` | `"maturity"` \| `"effective"` | `"maturity"` | Which score `--min-level` uses |
 | `extends` | `string[]` | `[]` | Named presets to apply (see below) |
 | `rules` | `Record<checkId, severity>` | `{}` | Per-check severity override, applied after every preset in `extends` |
 
-Precedence: **CLI flags → Action inputs → config file → defaults**. `extends`/`rules` are config-file-only in this release — there is no `--extends`/`--rule` CLI flag or Action input equivalent yet; use `--config <path>` to point at a `.harness-score.json` that sets them.
+Precedence: **CLI flags → Action inputs → config file → defaults**. `scan.includePaths`, `extends`, and `rules` are configured in the config file; use `--config <path>` to point at a `.harness-score.json` that sets them. The GitHub Action reads the same config file.
+
+`scan.includePaths` accepts exact paths relative to the repository root, using `/` separators. A path can name a file or directory; selected directories include descendants recursively. Paths cannot be absolute, contain `..`, or use globs. Missing paths are ignored. The default exclusions still apply everywhere outside the selected paths, and the effective list is shown in reports and compared with baselines.
 
 ### Team customization: `extends` and `rules` {#team-customization}
 

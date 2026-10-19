@@ -18,7 +18,13 @@ export interface ExtraRootEntry {
   path: string;
 }
 
+export interface ScanConfig {
+  /** Exact repo-relative paths made visible inside otherwise skipped directories. */
+  includePaths: string[];
+}
+
 export interface HarnessScoreConfig {
+  scan?: ScanConfig;
   scopes: {
     user: boolean;
     system: boolean;
@@ -32,6 +38,7 @@ export interface HarnessScoreConfig {
 }
 
 export interface ResolvedScanConfig {
+  scan?: ScanConfig;
   scopes: {
     user: boolean;
     system: boolean;
@@ -45,6 +52,7 @@ export interface ResolvedScanConfig {
 }
 
 export const DEFAULT_CONFIG: HarnessScoreConfig = {
+  scan: { includePaths: [] },
   scopes: { user: false, system: false },
   extraRoots: [],
   gate: 'maturity',
@@ -67,8 +75,9 @@ export const PRESET_REGISTRY: Record<string, Record<string, Severity>> = {
   ),
 };
 
-const ALLOWED_TOP_KEYS = new Set(['scopes', 'extraRoots', 'gate', 'extends', 'rules']);
+const ALLOWED_TOP_KEYS = new Set(['scan', 'scopes', 'extraRoots', 'gate', 'extends', 'rules']);
 const ALLOWED_SCOPE_KEYS = new Set(['user', 'system']);
+const ALLOWED_SCAN_KEYS = new Set(['includePaths']);
 const VALID_SEVERITIES = new Set(['off', 'error']);
 const CHECK_IDS = new Set(ALL_CHECKS.map((c) => c.id));
 
@@ -120,6 +129,44 @@ function parseScopes(value: unknown, source: string): HarnessScoreConfig['scopes
     user: user === true,
     system: system === true,
   };
+}
+
+function parseScan(value: unknown, source: string): ScanConfig {
+  if (value === undefined) return { includePaths: [] };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    configError(`${source}: scan must be an object`);
+  }
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    if (!ALLOWED_SCAN_KEYS.has(key)) configError(`${source}: unknown scan key "${key}"`);
+  }
+  const paths = obj.includePaths;
+  if (paths === undefined) return { includePaths: [] };
+  if (!Array.isArray(paths)) configError(`${source}.scan.includePaths must be an array`);
+
+  const normalized = new Set<string>();
+  paths.forEach((entry, index) => {
+    const label = `${source}.scan.includePaths[${index}]`;
+    if (typeof entry !== 'string' || entry.trim() === '') {
+      configError(`${label}: must be a non-empty relative path`);
+    }
+    if (
+      entry.startsWith('/') ||
+      /^[A-Za-z]:/.test(entry) ||
+      entry.includes('\\') ||
+      ['*', '?', '{', '}', '[', ']'].some((character) => entry.includes(character))
+    ) {
+      configError(`${label}: must be an exact repo-relative path using forward slashes`);
+    }
+    const segments = entry.split('/');
+    if (
+      segments.some((segment) => segment === '' || segment === '.' || segment === '..' || segment === '.git')
+    ) {
+      configError(`${label}: empty, ".", "..", and ".git" path segments are not allowed`);
+    }
+    normalized.add(segments.join('/'));
+  });
+  return { includePaths: [...normalized].sort() };
 }
 
 function parseExtraRoots(value: unknown, source: string): ExtraRootEntry[] {
@@ -209,6 +256,7 @@ export function parseConfigObject(raw: unknown, source: string): HarnessScoreCon
     }
   }
   return {
+    scan: parseScan(obj.scan, source),
     scopes: parseScopes(obj.scopes, source),
     extraRoots: parseExtraRoots(obj.extraRoots, source),
     gate: obj.gate === undefined ? 'maturity' : parseGate(obj.gate, source),
@@ -284,6 +332,7 @@ export function parseScopeFlagList(value: string): ScopeFlag[] {
 export function resolveScanConfig(repoRoot: string, overrides: CliConfigOverrides = {}): ResolvedScanConfig {
   let base: HarnessScoreConfig = {
     ...DEFAULT_CONFIG,
+    scan: { ...DEFAULT_CONFIG.scan!, includePaths: [...DEFAULT_CONFIG.scan!.includePaths] },
     scopes: { ...DEFAULT_CONFIG.scopes },
     extraRoots: [],
     extends: [],
@@ -315,6 +364,7 @@ export function resolveScanConfig(repoRoot: string, overrides: CliConfigOverride
   }
 
   return {
+    scan: base.scan,
     scopes: { user, system },
     extraRoots: base.extraRoots,
     gate,

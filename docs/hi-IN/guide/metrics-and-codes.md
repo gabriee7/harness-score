@@ -139,6 +139,9 @@ Scan root पर optional JSON (strict schema — unknown keys error):
     "user": false,
     "system": false
   },
+  "scan": {
+    "includePaths": ["build/ci"]
+  },
   "extraRoots": [
     { "id": "team-shared", "path": "../shared-harness" }
   ],
@@ -154,12 +157,15 @@ Scan root पर optional JSON (strict schema — unknown keys error):
 |---|---|---|---|
 | `scopes.user` | boolean | `false` | User-level harness overlay include करें |
 | `scopes.system` | boolean | `false` | System-level overlay include करें |
+| `scan.includePaths` | `string[]` | `[]` | Normally skipped directories के भीतर scan करने के लिए exact repo-relative paths; globs नहीं |
 | `extraRoots` | `{ id, path }[]` | `[]` | Effective में merge होने वाली extra harness trees |
 | `gate` | `"maturity"` \| `"effective"` | `"maturity"` | `--min-level` कौन-सा score use करता है |
 | `extends` | `string[]` | `[]` | Apply करने के लिए named presets (नीचे देखें) |
 | `rules` | `Record<checkId, severity>` | `{}` | Per-check severity override, `extends` के हर preset के बाद apply होता है |
 
-Precedence: **CLI flags → Action inputs → config file → defaults**। `extends`/`rules` इस release में सिर्फ config-file तक सीमित हैं — अभी कोई `--extends`/`--rule` CLI flag या equivalent Action input नहीं है; इन्हें set करने वाली `.harness-score.json` की ओर point करने के लिए `--config <path>` use करें।
+Precedence: **CLI flags → Action inputs → config file → defaults**। `scan.includePaths`, `extends`, और `rules` config file में set होते हैं; इन्हें परिभाषित करने वाली `.harness-score.json` के लिए `--config <path>` use करें। GitHub Action भी यही config file पढ़ता है।
+
+`scan.includePaths` repository root के सापेक्ष exact paths स्वीकार करता है और `/` separators इस्तेमाल करता है। Path किसी file या directory को बता सकता है; चुनी गई directories के descendants recursively शामिल होते हैं। Absolute paths, `..`, और globs स्वीकार नहीं हैं। Missing paths अनदेखे रहते हैं। चुने गए paths के बाहर default exclusions लागू रहते हैं, और प्रभावी सूची reports में दिखती है तथा baselines से compare होती है।
 
 ### Team customization: `extends` और `rules` {#team-customization}
 

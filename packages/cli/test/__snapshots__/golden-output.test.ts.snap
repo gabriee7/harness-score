@@ -1076,6 +1076,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
@@ -2181,6 +2184,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
@@ -3290,6 +3296,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
@@ -4397,6 +4406,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
@@ -4785,7 +4797,7 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
       "dimension": "ci",
       "docsUrl": "https://paladini.github.io/harness-score/guide/measure-and-improve#ci-04",
       "earned": 3,
-      "evidence": "Found: .pre-commit-config.yaml.",
+      "evidence": "Found: pre-commit config (.pre-commit-config.yaml).",
       "id": "CI-04",
       "passed": true,
       "points": 3,
@@ -5311,7 +5323,7 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
         "dimension": "ci",
         "docsUrl": "https://paladini.github.io/harness-score/guide/measure-and-improve#ci-04",
         "earned": 3,
-        "evidence": "Found: .pre-commit-config.yaml.",
+        "evidence": "Found: pre-commit config (.pre-commit-config.yaml).",
         "id": "CI-04",
         "passed": true,
         "points": 3,
@@ -5504,6 +5516,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
@@ -5913,7 +5928,7 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
       "dimension": "ci",
       "docsUrl": "https://paladini.github.io/harness-score/guide/measure-and-improve#ci-04",
       "earned": 3,
-      "evidence": "Found: .husky/, husky in package.json.",
+      "evidence": "Found: pre-commit config (fixtures/level-4-claude-code/.pre-commit-config.yaml), pre-commit config (fixtures/level-4/.pre-commit-config.yaml), .husky/, husky in package.json.",
       "id": "CI-04",
       "passed": true,
       "points": 3,
@@ -6466,7 +6481,7 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
         "dimension": "ci",
         "docsUrl": "https://paladini.github.io/harness-score/guide/measure-and-improve#ci-04",
         "earned": 3,
-        "evidence": "Found: .husky/, husky in package.json.",
+        "evidence": "Found: pre-commit config (fixtures/level-4-claude-code/.pre-commit-config.yaml), pre-commit config (fixtures/level-4/.pre-commit-config.yaml), .husky/, husky in package.json.",
         "id": "CI-04",
         "passed": true,
         "points": 3,
@@ -6665,6 +6680,9 @@ exports[`golden output — regression baseline for build/packaging/scan changes 
     "rules": {},
   },
   "resolvedRoots": undefined,
+  "scan": {
+    "includePaths": [],
+  },
   "scopes": {
     "effective": [
       "repo",
