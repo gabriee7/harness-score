@@ -26,7 +26,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-version.mjs",
     "release:notes": "node scripts/release-notes.mjs",
-    "release:prepare": "npm run version-packages && npm test && npm run lint && npm run scan && npm run docs:build && npm run release:notes",
+    "release:prepare": "npm run version-packages && npm test && npm run lint && npm run scan && npm run docs:build && npm run release:notes --",
     "prepare": "husky"
   },
   "devDependencies": {
