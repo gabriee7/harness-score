@@ -598,7 +598,7 @@ fire किए।
 **सुधार:** सस्ते computational sensors हर push पर belong — **गुणवत्ता को बाएँ रखें**।
 
 #### CI-04 · Pre-commit checks installed — 3 pts {#ci-04}
-husky/lint-staged, `pre-commit`, या lefthook।
+husky/lint-staged, `pre-commit`, `.githooks/pre-commit`, या lefthook। खोजे गए paths में pre-commit configuration files भी पहचानी जाती हैं।
 **सुधार:** commit को मिलने वाला earliest feedback; on-edit hooks
 द्वारा miss हुआ कुछ history में जाने से पहले पकड़ता है।
 

@@ -49,6 +49,13 @@ function renderDiffSection(diff: ReportDiff): string[] {
       ),
     );
   }
+  if (diff.scanIncludePathsChanged) {
+    lines.push(
+      yellow(
+        `  ${WARN} Baseline used different scan.includePaths ${MIDDOT} score deltas may reflect visibility of additional repository paths.`,
+      ),
+    );
+  }
   lines.push(
     `    Level: L${diff.level.before} ${MIDDOT} ${diff.level.beforeName} ${ARROW} ` +
       `L${diff.level.after} ${MIDDOT} ${diff.level.afterName} (${signed(diff.level.delta)})`,
@@ -186,6 +193,8 @@ export function renderTerminal(report: Report, diff?: ReportDiff | null): string
     const offText = offIds.length > 0 ? ` ${MIDDOT} ${offIds.join(', ')} ${ARROW} off` : '';
     lines.push(dim(`  Preset: ${extendsLabel}${offText}`));
   }
+  const includePaths = report.scan?.includePaths ?? [];
+  if (includePaths.length > 0) lines.push(dim(`  Scan include paths: ${includePaths.join(', ')}`));
   lines.push('');
   if (diff) {
     lines.push(...renderDiffSection(diff));

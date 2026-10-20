@@ -135,6 +135,9 @@ JSON opcional en la raíz del scan (schema estricto — claves desconocidas gene
 
 ```json
 {
+  "scan": {
+    "includePaths": ["build/ci"]
+  },
   "scopes": {
     "user": false,
     "system": false
@@ -155,11 +158,14 @@ JSON opcional en la raíz del scan (schema estricto — claves desconocidas gene
 | `scopes.user` | boolean | `false` | Incluir overlay de harness a nivel usuario |
 | `scopes.system` | boolean | `false` | Incluir overlay a nivel sistema |
 | `extraRoots` | `{ id, path }[]` | `[]` | Árboles extra de harness fusionados en effective |
+| `scan.includePaths` | `string[]` | `[]` | Archivos/directorios exactos, relativos a la raíz, que se incluyen dentro de directorios normalmente omitidos; sin globs |
 | `gate` | `"maturity"` \| `"effective"` | `"maturity"` | Qué puntaje usa `--min-level` |
 | `extends` | `string[]` | `[]` | Presets con nombre a aplicar (ver abajo) |
 | `rules` | `Record<checkId, severity>` | `{}` | Override de severidad por check, aplicado después de cada preset en `extends` |
 
-Precedencia: **flags de CLI → inputs de Action → archivo de config → defaults**. `extends`/`rules` son exclusivos del archivo de config en esta versión — todavía no hay flag `--extends`/`--rule` en la CLI ni input equivalente en la Action; usa `--config <path>` apuntando a un `.harness-score.json` que los defina.
+Precedencia: **flags de CLI → inputs de Action → archivo de configuración → valores predeterminados**. `scan.includePaths`, `extends` y `rules` se configuran en el archivo; usa `--config <path>` para indicar un `.harness-score.json` que los defina. GitHub Action lee el mismo archivo.
+
+`scan.includePaths` acepta rutas exactas relativas a la raíz del repositorio, con separadores `/`. Una ruta puede señalar un archivo o directorio; los directorios seleccionados incluyen sus descendientes recursivamente. No se permiten rutas absolutas, `..` ni patrones glob. Las rutas inexistentes se ignoran. Las exclusiones predeterminadas siguen vigentes fuera de las rutas seleccionadas, y la lista efectiva aparece en los informes y se compara con las baselines.
 
 ### Personalización por equipo: `extends` y `rules` {#team-customization}
 

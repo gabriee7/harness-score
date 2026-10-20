@@ -134,6 +134,9 @@
     "user": false,
     "system": false
   },
+  "scan": {
+    "includePaths": ["build/ci"]
+  },
   "extraRoots": [
     { "id": "team-shared", "path": "../shared-harness" }
   ],
@@ -149,12 +152,15 @@
 |---|---|---|---|
 | `scopes.user` | boolean | `false` | 包含用户级 harness overlay |
 | `scopes.system` | boolean | `false` | 包含系统级 overlay |
+| `scan.includePaths` | `string[]` | `[]` | 在通常跳过的目录中额外扫描的精确仓库相对路径；不支持 glob |
 | `extraRoots` | `{ id, path }[]` | `[]` | 合并到 effective 的额外 harness 树 |
 | `gate` | `"maturity"` \| `"effective"` | `"maturity"` | `--min-level` 使用的分数 |
 | `extends` | `string[]` | `[]` | 要应用的具名 preset（见下文） |
 | `rules` | `Record<checkId, severity>` | `{}` | 按 check 的 severity override，应用于 `extends` 中每个 preset 之后 |
 
-优先级：**CLI 标志 → Action 输入 → 配置文件 → 默认值**。`extends`/`rules` 在本版本中仅限配置文件使用 — 目前没有对应的 `--extends`/`--rule` CLI 标志或 Action 输入；可用 `--config <path>` 指向一个定义了它们的 `.harness-score.json`。
+优先级：**CLI 标志 → Action 输入 → 配置文件 → 默认值**。`scan.includePaths`、`extends` 和 `rules` 在配置文件中设置；可用 `--config <path>` 指向定义这些选项的 `.harness-score.json`。GitHub Action 读取同一配置文件。
+
+`scan.includePaths` 接受相对于仓库根目录的精确路径，并使用 `/` 分隔符。路径可以指向文件或目录；选中的目录会递归包含其后代。不能使用绝对路径、`..` 或 glob。不存在的路径会被忽略。选中路径之外仍应用默认排除规则；报告会显示生效的路径列表，并与基线进行比较。
 
 ### 团队定制：`extends` 与 `rules` {#team-customization}
 

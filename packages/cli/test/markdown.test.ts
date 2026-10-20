@@ -240,6 +240,13 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown(makeReport())).not.toContain('**Preset:**');
   });
 
+  test('shows configured scan paths and warns when the baseline used another list', () => {
+    const report = makeReport({ scan: { includePaths: ['build/ci'] } });
+    expect(renderMarkdown(report)).toContain('**Scan include paths:** build/ci');
+    const out = renderMarkdown(report, makeDiff({ scanIncludePathsChanged: true }));
+    expect(out).toContain('Baseline used different scan.includePaths');
+  });
+
   test('an off-severity check gets a distinct status glyph, not ✅/❌', () => {
     const out = renderMarkdown(
       makeReport({ checks: [makeCheck({ id: 'HKS-01', passed: false, severity: 'off' })] }),

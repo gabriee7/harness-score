@@ -872,6 +872,20 @@ describe('ci checks', () => {
     const ctx = fakeContext({ '.husky/pre-commit': 'npm test' });
     expect((await check('CI-04')).run(ctx).passed).toBe(true);
   });
+
+  test('CI-04 recognizes .githooks and nested pre-commit configuration', async () => {
+    const gitHook = fakeContext({ '.githooks/pre-commit': 'make precommit' });
+    expect((await check('CI-04')).run(gitHook)).toMatchObject({
+      passed: true,
+      evidence: expect.stringContaining('.githooks/pre-commit'),
+    });
+
+    const nestedConfig = fakeContext({ 'build/ci/.pre-commit-config.yaml': 'repos: []' });
+    expect((await check('CI-04')).run(nestedConfig)).toMatchObject({
+      passed: true,
+      evidence: expect.stringContaining('build/ci/.pre-commit-config.yaml'),
+    });
+  });
 });
 
 describe('hygiene checks', () => {

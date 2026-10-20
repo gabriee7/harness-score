@@ -135,6 +135,9 @@ JSON opcional na raiz do scan (schema estrito — chaves desconhecidas geram err
 
 ```json
 {
+  "scan": {
+    "includePaths": ["build/ci"]
+  },
   "scopes": {
     "user": false,
     "system": false
@@ -155,11 +158,14 @@ JSON opcional na raiz do scan (schema estrito — chaves desconhecidas geram err
 | `scopes.user` | boolean | `false` | Incluir overlay de harness em nível de usuário |
 | `scopes.system` | boolean | `false` | Incluir overlay em nível de sistema |
 | `extraRoots` | `{ id, path }[]` | `[]` | Árvores extras de harness mescladas no effective |
+| `scan.includePaths` | `string[]` | `[]` | Arquivos/diretórios exatos, relativos à raiz, a incluir em pastas normalmente ignoradas; sem curingas |
 | `gate` | `"maturity"` \| `"effective"` | `"maturity"` | Qual pontuação o `--min-level` usa |
 | `extends` | `string[]` | `[]` | Presets nomeados a aplicar (veja abaixo) |
 | `rules` | `Record<checkId, severity>` | `{}` | Override de severidade por check, aplicado depois de cada preset em `extends` |
 
-Precedência: **flags da CLI → inputs da Action → arquivo de config → padrões**. `extends`/`rules` são exclusivos do arquivo de config nesta versão — ainda não existe flag `--extends`/`--rule` na CLI nem input equivalente na Action; use `--config <path>` apontando para um `.harness-score.json` que os defina.
+Precedência: **flags da CLI → inputs da Action → arquivo de config → padrões**. `scan.includePaths`, `extends` e `rules` são configurados no arquivo; use `--config <path>` para apontar para um `.harness-score.json` que os defina. A GitHub Action lê o mesmo arquivo.
+
+`scan.includePaths` aceita caminhos exatos relativos à raiz do repositório, com separadores `/`. Um caminho pode indicar um arquivo ou diretório; diretórios selecionados incluem os descendentes recursivamente. Caminhos absolutos, `..` e curingas não são aceitos. Caminhos inexistentes são ignorados. As exclusões padrão continuam valendo fora dos caminhos selecionados, e a lista efetiva aparece nos relatórios e é comparada com baselines.
 
 ### Personalização por equipe: `extends` e `rules` {#team-customization}
 

@@ -165,8 +165,12 @@ export const ciChecks: Check[] = [
       'Add pre-commit tooling (husky + lint-staged, pre-commit, lefthook) so fast checks run before a commit exists — the earliest possible feedback loop.',
     run(ctx) {
       const evidence: string[] = [];
-      if (ctx.has('.pre-commit-config.yaml')) evidence.push('.pre-commit-config.yaml');
+      const preCommitConfigs = ctx.matching(/(^|\/)\.pre-commit-config\.yaml$/);
+      if (preCommitConfigs.length > 0) {
+        evidence.push(...preCommitConfigs.slice(0, 3).map((file) => `pre-commit config (${file})`));
+      }
       if (ctx.matching(/(^|\/)\.husky\/[^/]+$/).length > 0) evidence.push('.husky/');
+      if (ctx.has('.githooks/pre-commit')) evidence.push('.githooks/pre-commit');
       if (ctx.has('lefthook.yml') || ctx.has('.lefthook.yml')) evidence.push('lefthook.yml');
       const pkgContent = ctx.read('package.json');
       const pkg = pkgContent ? (safeJsonParse(pkgContent) as Record<string, any> | null) : null;

@@ -1,7 +1,10 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import type { ResolvedScanConfig } from '../src/config.js';
+import { resolveScanConfig } from '../src/config.js';
 import { score } from '../src/index.js';
 import { renderBadge } from '../src/report/badge.js';
 import { buildReport, buildReportFromScanContext } from '../src/score.js';
@@ -122,5 +125,39 @@ describe('no-hooks preset against fixtures/level-4', () => {
     expect(
       withPreset.preset.resolved.every((r) => r.severity === 'off' && r.source === 'extends:no-hooks'),
     ).toBe(true);
+  });
+});
+
+describe('scan.includePaths integration', () => {
+  test('restores the reported linter and pre-commit signals from build/ci', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-score-include-paths-'));
+    try {
+      fs.mkdirSync(path.join(root, 'build', 'ci'), { recursive: true });
+      fs.mkdirSync(path.join(root, '.githooks'), { recursive: true });
+      fs.writeFileSync(
+        path.join(root, '.harness-score.json'),
+        JSON.stringify({ scan: { includePaths: ['build/ci'] } }),
+      );
+      fs.writeFileSync(path.join(root, 'build', 'ci', '.golangci.yaml'), 'version: 2');
+      fs.writeFileSync(path.join(root, 'build', 'ci', '.pre-commit-config.yaml'), 'repos: []');
+      fs.writeFileSync(path.join(root, '.githooks', 'pre-commit'), '#!/bin/sh\n');
+
+      const report = buildReport(root, resolveScanConfig(root));
+      expect(report.scan?.includePaths).toEqual(['build/ci']);
+      expect(report.checks.find((check) => check.id === 'SNS-02')?.passed).toBe(true);
+      expect(report.checks.find((check) => check.id === 'CI-04')?.passed).toBe(true);
+
+      const explicitConfigPath = path.join(root, 'custom-config.json');
+      fs.writeFileSync(explicitConfigPath, JSON.stringify({ scan: { includePaths: ['build/ci'] } }));
+      const explicitConfigReport = buildReport(
+        root,
+        resolveScanConfig(root, { configPath: explicitConfigPath }),
+      );
+      expect(explicitConfigReport.scan?.includePaths).toEqual(['build/ci']);
+      expect(explicitConfigReport.checks.find((check) => check.id === 'SNS-02')?.passed).toBe(true);
+      expect(explicitConfigReport.checks.find((check) => check.id === 'CI-04')?.passed).toBe(true);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

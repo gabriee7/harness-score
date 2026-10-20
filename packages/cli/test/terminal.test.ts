@@ -234,6 +234,13 @@ describe('renderTerminal', () => {
     expect(out).toContain('Baseline used a different extends/rules config');
   });
 
+  test('shows configured scan paths and warns when the baseline used another list', () => {
+    const report = makeReport({ scan: { includePaths: ['build/ci'] } });
+    expect(renderTerminal(report)).toContain('Scan include paths: build/ci');
+    const out = renderTerminal(report, makeDiff({ scanIncludePathsChanged: true }));
+    expect(out).toContain('Baseline used different scan.includePaths');
+  });
+
   test('diff section renders only non-zero dimension deltas', () => {
     const diff = makeDiff({
       dimensions: DIMENSIONS.map((d, i) => ({

@@ -173,4 +173,6 @@ export interface Report {
   effective: ScoreSnapshot;
   /** Team customization (extends/rules) actually applied to this scan. */
   preset: PresetInfo;
+  /** Extra repo-relative paths made visible inside normally skipped directories. */
+  scan?: { includePaths: string[] };
 }

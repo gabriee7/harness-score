@@ -40,6 +40,8 @@ export interface ReportDiff {
    * a config change rather than an actual change in the repository.
    */
   presetChanged: boolean;
+  /** True when the explicit include paths differ; absent paths in old reports mean []. */
+  scanIncludePathsChanged?: boolean;
 }
 
 /** Baselines saved by pre-v1.5 tool versions have no `preset` field at all. */
@@ -125,5 +127,7 @@ export function computeDiff(baseline: Report, current: Report): ReportDiff {
       catalogShape(baseline.checks) !== catalogShape(current.checks),
     presetChanged:
       JSON.stringify(baseline.preset ?? EMPTY_PRESET) !== JSON.stringify(current.preset ?? EMPTY_PRESET),
+    scanIncludePathsChanged:
+      JSON.stringify(baseline.scan?.includePaths ?? []) !== JSON.stringify(current.scan?.includePaths ?? []),
   };
 }

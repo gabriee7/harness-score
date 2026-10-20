@@ -637,7 +637,7 @@ firing.
 left.
 
 #### CI-04 · Pre-commit checks installed — 3 pts {#ci-04}
-husky/lint-staged, `pre-commit`, or lefthook.
+husky/lint-staged, `pre-commit`, `.githooks/pre-commit` ou lefthook. Arquivos de configuração do pre-commit também são detectados nos caminhos descobertos.
 **Correção:** the earliest feedback a commit can get; catches what on-edit hooks
 missed before it enters history.
 

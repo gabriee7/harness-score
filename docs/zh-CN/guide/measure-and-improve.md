@@ -582,7 +582,7 @@ GitHub Actions workflow（或 GitLab/CircleCI/Jenkins 等价物），也包括
 **修复：** 廉价的计算型传感器应随每次 push 运行 — 质量左移。
 
 #### CI-04 · Pre-commit checks installed — 3 pts {#ci-04}
-husky/lint-staged、`pre-commit` 或 lefthook。
+husky/lint-staged、`pre-commit`、`.githooks/pre-commit` 或 lefthook。扫描到的路径中也会识别 pre-commit 配置文件。
 **修复：** 提交能获得的最早反馈；在变更进入历史前捕获编辑时 hooks 漏掉的问题。
 
 ### Hygiene & Safety (23 pts)

@@ -97,6 +97,16 @@ describe('computeDiff', () => {
     expect(computeDiff(legacyBaseline as typeof current, current).presetChanged).toBe(false);
   });
 
+  test('treats a legacy baseline without scan config as an empty includePaths list', () => {
+    const current = score(path.join(FIXTURES, 'level-4'));
+    const { scan: _scan, ...legacyBaseline } = current;
+    expect(computeDiff(legacyBaseline as typeof current, current).scanIncludePathsChanged).toBe(false);
+
+    const configured = { ...current, scan: { includePaths: ['build/ci'] } };
+    expect(computeDiff(legacyBaseline as typeof current, configured).scanIncludePathsChanged).toBe(true);
+    expect(computeDiff(configured, current).scanIncludePathsChanged).toBe(true);
+  });
+
   test('rejects incomplete current and legacy baseline reports', () => {
     const complete = score(path.join(FIXTURES, 'level-4'));
     const incomplete = {

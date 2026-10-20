@@ -54,6 +54,8 @@ export interface ScanOverlay {
 
 export interface CreateScanOptions {
   overlays?: ScanOverlay[];
+  /** Exact repo-relative paths to scan inside directories otherwise skipped. */
+  includePaths?: string[];
 }
 
 function safeRealpath(p: string): string | null {
@@ -67,6 +69,7 @@ function safeRealpath(p: string): string | null {
 interface WalkOptions {
   maxDepth?: number;
   maxFiles?: number;
+  includePaths?: string[];
   readDirectory?: (directory: string) => fs.Dirent[];
   statPath?: (path: string) => fs.Stats;
 }
@@ -76,6 +79,7 @@ interface PendingDirectory {
   rel: string;
   depth: number;
   real: string;
+  includeOnly: boolean;
 }
 
 export interface WalkResult {
@@ -110,9 +114,13 @@ export function walkDirectory(root: string, options: WalkOptions = {}): WalkResu
   const statPath = options.statPath ?? fs.statSync;
   const files: string[] = [];
   const incompleteReasons: ScanIncompleteReason[] = [];
+  const includePaths = [...new Set(options.includePaths ?? [])];
+  const includedPathSet = new Set(includePaths);
+  const isIncludedPathAncestor = (rel: string): boolean =>
+    includePaths.some((includePath) => includePath.startsWith(`${rel}/`));
   const rootReal = safeRealpath(root) ?? path.resolve(root);
   const visitedRealDirs = new Set<string>();
-  const stack: PendingDirectory[] = [{ abs: root, rel: '', depth: 0, real: rootReal }];
+  const stack: PendingDirectory[] = [{ abs: root, rel: '', depth: 0, real: rootReal, includeOnly: false }];
   const deferredSymlinkDirs: PendingDirectory[] = [];
 
   while (stack.length > 0 || deferredSymlinkDirs.length > 0) {
@@ -137,9 +145,15 @@ export function walkDirectory(root: string, options: WalkOptions = {}): WalkResu
     const childSymlinkDirs: PendingDirectory[] = [];
     for (const entry of entries) {
       const rel = dir.rel === '' ? entry.name : `${dir.rel}/${entry.name}`;
+      const isIncludedPath = includedPathSet.has(rel);
+      const isIncludedAncestor = isIncludedPathAncestor(rel);
+      if (dir.includeOnly && !isIncludedPath && !isIncludedAncestor) continue;
+      // Preserve the fast path for generated-directory symlinks: unless the
+      // configured path selects this entry or a descendant, do not inspect it.
       if (
-        SKIP_RELATIVE_PATHS.has(rel) ||
-        (SKIP_DIRS.has(entry.name) && (entry.isDirectory() || entry.isSymbolicLink()))
+        (SKIP_DIRS.has(entry.name) || SKIP_RELATIVE_PATHS.has(rel)) &&
+        !isIncludedPath &&
+        !isIncludedAncestor
       ) {
         continue;
       }
@@ -172,19 +186,29 @@ export function walkDirectory(root: string, options: WalkOptions = {}): WalkResu
         isFile = stat.isFile();
       }
 
+      const isSkippedDirectory = SKIP_DIRS.has(entry.name) && isDir;
+      const isSkippedPath = SKIP_RELATIVE_PATHS.has(rel);
+      if ((isSkippedDirectory || isSkippedPath) && !isIncludedPath && !isIncludedAncestor) {
+        continue;
+      }
+
       if (isDir) {
+        const includeOnly =
+          (dir.includeOnly && isIncludedAncestor && !isIncludedPath) ||
+          ((isSkippedDirectory || isSkippedPath) && !isIncludedPath && isIncludedAncestor);
         if (maxDepth !== undefined && dir.depth >= maxDepth) {
           addFirstReason(incompleteReasons, { code: 'depth-limit', path: rel, limit: maxDepth });
           continue;
         }
         const real = symlinkReal ?? safeRealpath(abs) ?? abs;
-        const child = { abs, rel, depth: dir.depth + 1, real };
+        const child = { abs, rel, depth: dir.depth + 1, real, includeOnly };
         if (entry.isSymbolicLink()) {
           childSymlinkDirs.push(child);
         } else {
           childDirs.push(child);
         }
       } else if (isFile) {
+        if (dir.includeOnly && !isIncludedPath) continue;
         if (files.length >= maxFiles) {
           addFirstReason(incompleteReasons, {
             code: 'file-count-limit',
@@ -285,7 +309,11 @@ function buildContext(
 
 export function createScanContext(rootInput: string, options: CreateScanOptions = {}): ScanContext {
   const root = path.resolve(rootInput);
-  const { files: repoFiles, truncated: repoTruncated, incompleteReasons: repoReasons } = walkDirectory(root);
+  const {
+    files: repoFiles,
+    truncated: repoTruncated,
+    incompleteReasons: repoReasons,
+  } = walkDirectory(root, { includePaths: options.includePaths });
   const overlays = options.overlays ?? [];
 
   const overlayAbsByRel = new Map<string, string>();
