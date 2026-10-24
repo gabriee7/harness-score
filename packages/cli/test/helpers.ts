@@ -1,4 +1,5 @@
 import type { ScanContext } from '../src/index.js';
+import { filterGlob } from '../src/references/glob.js';
 
 /** In-memory ScanContext for unit-testing individual checks. */
 export function fakeContext(files: Record<string, string>, root = '/fake'): ScanContext {
@@ -11,6 +12,7 @@ export function fakeContext(files: Record<string, string>, root = '/fake'): Scan
     hasDirectory: (p) => paths.some((f) => f.startsWith(`${p}/`)),
     read: (p) => (Object.hasOwn(files, p) ? files[p]! : null),
     matching: (re) => paths.filter((p) => re.test(p)),
+    matchingGlob: (pattern) => filterGlob(pattern, paths),
   };
 }
 

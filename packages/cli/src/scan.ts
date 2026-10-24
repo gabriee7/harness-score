@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { filterGlob } from './references/glob.js';
 import type { ScanContext, ScanIncompleteReason } from './types.js';
 import { compareLexically } from './util.js';
 
@@ -263,6 +264,7 @@ function buildContext(
   }
   const contentCache = new Map<string, string | null>();
   const matchCache = new Map<string, string[]>();
+  const globCache = new Map<string, string[] | null>();
 
   return {
     root,
@@ -311,6 +313,12 @@ function buildContext(
       if (cached) return cached;
       const result = files.filter((f) => re.test(f));
       matchCache.set(key, result);
+      return result;
+    },
+    matchingGlob(pattern: string): string[] | null {
+      if (globCache.has(pattern)) return globCache.get(pattern)!;
+      const result = filterGlob(pattern, files);
+      globCache.set(pattern, result);
       return result;
     },
   };

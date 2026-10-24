@@ -32,6 +32,8 @@ export interface ScanContext {
   read(relPath: string): string | null;
   /** All files whose relative path matches the regex. */
   matching(re: RegExp): string[];
+  /** Files matching a glob pattern, or null when the pattern uses unsupported syntax. */
+  matchingGlob(pattern: string): string[] | null;
 }
 
 /** Non-fatal diagnostic attached to a check result. */
