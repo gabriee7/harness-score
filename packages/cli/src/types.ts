@@ -26,6 +26,8 @@ export interface ScanContext {
   incompleteReasons?: ScanIncompleteReason[];
   /** True when the relative path exists as a file. */
   has(relPath: string): boolean;
+  /** True when at least one scanned file lives under the relative directory path. Empty directories are not detected. */
+  hasDirectory(relPath: string): boolean;
   /** File content as UTF-8, or null when missing/unreadable/over the read limit. Cached. */
   read(relPath: string): string | null;
   /** All files whose relative path matches the regex. */

@@ -255,6 +255,12 @@ function buildContext(
     if (!fileSet.has(rel)) fileSet.add(rel);
   }
   const files = [...fileSet].sort();
+  const dirSet = new Set<string>();
+  for (const f of files) {
+    for (let i = f.indexOf('/'); i !== -1; i = f.indexOf('/', i + 1)) {
+      dirSet.add(f.slice(0, i));
+    }
+  }
   const contentCache = new Map<string, string | null>();
   const matchCache = new Map<string, string[]>();
 
@@ -267,6 +273,9 @@ function buildContext(
     incompleteReasons,
     has(relPath: string): boolean {
       return fileSet.has(relPath);
+    },
+    hasDirectory(relPath: string): boolean {
+      return dirSet.has(relPath);
     },
     read(relPath: string): string | null {
       if (contentCache.has(relPath)) return contentCache.get(relPath)!;
