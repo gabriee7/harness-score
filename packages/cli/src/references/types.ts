@@ -1,3 +1,6 @@
+/** Class of operational document a reference was found in. */
+export type SourceArtifactKind = 'context-instruction' | 'scoped-rule' | 'skill' | 'versioned-spec';
+
 /**
  * Closed list of reasons a reference target cannot be evaluated against the
  * repository. Each one is recorded as evidence; none is treated as a defect.
