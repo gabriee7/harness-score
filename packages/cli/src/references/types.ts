@@ -1,3 +1,5 @@
+import type { SourcePosition } from './markdown.js';
+
 /** Class of operational document a reference was found in. */
 export type SourceArtifactKind = 'context-instruction' | 'scoped-rule' | 'skill' | 'versioned-spec';
 
@@ -11,4 +13,64 @@ export type NotEvaluableReason =
   | 'execution-dependent'
   | 'root-escape-attempt'
   | 'incomplete-scan'
-  | 'inaccessible-local-target';
+  | 'inaccessible-local-target'
+  | 'non-operational-mention';
+
+/** What a reference points at. `null` when the text does not say. */
+export type ReferenceForm =
+  | 'file-path'
+  | 'directory-path'
+  | 'glob-pattern'
+  | 'anchor-same-doc'
+  | 'anchor-other-doc';
+
+/** Where in the document the reference text was found. */
+export type ReferenceSyntax = 'markdown-link' | 'inline-code' | 'code-block' | 'formal-field';
+
+/** The five diagnostic states. */
+export type ReferenceState = 'consistent' | 'inconsistent' | 'not-evaluable' | 'not-supported' | 'ambiguous';
+
+/** A state, or `pending` while the factual check has not run yet. */
+export type ReferenceStatus = ReferenceState | 'pending';
+
+export type AmbiguityReason = 'empty-destination' | 'no-type-indicator';
+export type UnsupportedReason = 'unsupported-glob';
+export type ReferenceReason = NotEvaluableReason | AmbiguityReason | UnsupportedReason;
+
+/** One occurrence of a reference in an operational document. */
+export interface ExtractedReference {
+  sourceArtifact: string;
+  sourceArtifactKind: SourceArtifactKind;
+  /** Start of the reference text. */
+  position: SourcePosition;
+  syntax: ReferenceSyntax;
+  form: ReferenceForm | null;
+  /** The reference text as written in the document. */
+  rawText: string;
+  /** Repository-relative path, glob pattern or anchor slug; null when there is none. */
+  normalizedTarget: string | null;
+  /** Normalized heading slug, for anchors. */
+  anchor: string | null;
+  /** Same target read relative to the document directory, when that differs. */
+  alternateTarget: string | null;
+  /** True when the text has a path separator or comes from a link or formal field. */
+  explicitPath: boolean;
+  /** True for a glob that is an active instruction (a formal scope field). */
+  operational: boolean;
+  state: ReferenceStatus;
+  reasonCode: ReferenceReason | null;
+  /** Identifier of the rule that produced the state. */
+  rule: string;
+  evidence: string;
+}
+
+export interface HtmlAnchor {
+  name: string;
+  attribute: 'name' | 'id';
+  position: SourcePosition;
+}
+
+export interface ExtractionResult {
+  references: ExtractedReference[];
+  htmlAnchors: HtmlAnchor[];
+}
