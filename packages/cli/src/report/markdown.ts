@@ -97,6 +97,9 @@ function renderReferencesSection(references: ReferenceReport): string[] {
     lines.push('', '### Other outcomes', '');
     for (const item of overview.other) lines.push(`- ${label(item.state)} / ${item.reason}: ${item.count}`);
   }
+  const [heading, ...details] = overview.specifications;
+  lines.push('', '### Specifications', '', `- ${heading}`);
+  for (const detail of details) lines.push(`- ${detail}`);
   return lines;
 }
 

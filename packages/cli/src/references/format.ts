@@ -19,6 +19,30 @@ export interface ReferenceOverview {
   hidden: number;
   /** Outcomes other than consistent and inconsistent, per state and reason. */
   other: Array<{ state: ReferenceState; reason: string; count: number }>;
+  /** The three specification properties, one line each (or a single line when there is no structure). */
+  specifications: string[];
+}
+
+function statesLine(byState: Record<ReferenceState, number>): string {
+  return (Object.keys(byState) as ReferenceState[])
+    .map((state) => `${label(state)} ${byState[state]}`)
+    .join(' · ');
+}
+
+function specificationLines(references: ReferenceReport): string[] {
+  const { structure, properties } = references.specifications;
+  if (structure.status === 'not-identified') return ['Specifications: no OpenSpec structure found'];
+  if (structure.status === 'external') {
+    return ['Specifications (OpenSpec): stored outside the repository root, not evaluable locally'];
+  }
+  const { specs, activeChanges, archivedChanges } = structure.parts;
+  const content = properties.minimumContent;
+  const unreadable = content.unreadable > 0 ? ` · unreadable ${content.unreadable}` : '';
+  return [
+    `Specifications (OpenSpec): ${specs} spec documents · ${activeChanges} active changes · ${archivedChanges} archived changes`,
+    `minimum content: sufficient ${content.sufficient} · insufficient ${content.insufficient} · empty ${content.empty}${unreadable}`,
+    `references in specifications: ${statesLine(properties.referenceConsistency)}`,
+  ];
 }
 
 const OTHER_STATES: ReferenceState[] = ['not-evaluable', 'not-supported', 'ambiguous'];
@@ -54,9 +78,7 @@ export function referenceOverview(references: ReferenceReport): ReferenceOvervie
     documents:
       `${summary.operationalDocuments} operational documents · ${summary.occurrences} references · ` +
       `${summary.skippedDocuments} documents skipped${unreadable}`,
-    states: (Object.keys(summary.byState) as ReferenceState[])
-      .map((state) => `${label(state)} ${summary.byState[state]}`)
-      .join(' · '),
+    states: statesLine(summary.byState),
     incomplete: !summary.scanComplete,
     inconsistent: inconsistent.slice(0, INCONSISTENT_LIST_LIMIT).map((occurrence) => ({
       location: `${occurrence.sourceArtifact}:${occurrence.position.line}:${occurrence.position.column}`,
@@ -65,5 +87,6 @@ export function referenceOverview(references: ReferenceReport): ReferenceOvervie
     })),
     hidden: Math.max(0, inconsistent.length - INCONSISTENT_LIST_LIMIT),
     other,
+    specifications: specificationLines(references),
   };
 }

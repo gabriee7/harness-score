@@ -208,4 +208,38 @@ export interface ReferenceReport {
   occurrences: ResolvedReference[];
   skipped: Array<{ path: string; kind: SourceArtifactKind; scope: 'illustrative' | 'archived' }>;
   unreadable: string[];
+  /** Structural recognition of versioned specifications (OpenSpec). */
+  specifications: SpecificationReport;
+}
+
+/** Whether a specification document has the minimum content of a proposal, requirement, spec or task. */
+export type SpecificationContent = 'sufficient' | 'empty' | 'insufficient' | 'unreadable' | 'not-assessed';
+
+export type SpecificationStructureStatus = 'identified' | 'not-identified' | 'external';
+
+/**
+ * Three independent properties of a repository's versioned specifications:
+ * an identifiable structure, minimum content, and consistent internal
+ * references. There is no combined verdict and no score.
+ */
+export interface SpecificationReport {
+  structure: {
+    status: SpecificationStructureStatus;
+    convention: 'openspec' | null;
+    /** Spec documents, active change folders and archived change folders. */
+    parts: { specs: number; activeChanges: number; archivedChanges: number };
+  };
+  documents: Array<{
+    path: string;
+    scope: 'operational' | 'illustrative' | 'archived';
+    minimumContent: SpecificationContent;
+    references: { total: number; byState: Record<ReferenceState, number> };
+  }>;
+  properties: {
+    structure: SpecificationStructureStatus;
+    /** Counts over operational specification documents only. */
+    minimumContent: { sufficient: number; empty: number; insufficient: number; unreadable: number };
+    /** States of the references found in operational specification documents. */
+    referenceConsistency: Record<ReferenceState, number>;
+  };
 }

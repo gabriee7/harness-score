@@ -5,6 +5,7 @@
 
 import type { ReferenceReport, ScanContext } from '../types.js';
 import { analyzeRepository, countByState } from './analyze.js';
+import { assessSpecifications } from './specs.js';
 
 export function buildReferenceReport(ctx: ScanContext): ReferenceReport {
   const analysis = analyzeRepository(ctx);
@@ -35,5 +36,6 @@ export function buildReferenceReport(ctx: ScanContext): ReferenceReport {
       scope: document.scope as 'illustrative' | 'archived',
     })),
     unreadable: analysis.unreadable,
+    specifications: assessSpecifications(ctx, analysis),
   };
 }

@@ -148,6 +148,9 @@ function renderReferencesSection(references: ReferenceReport): string[] {
       lines.push(`   ${dim(MIDDOT)} ${label(item.state)} / ${item.reason}: ${item.count}`);
     }
   }
+  const [heading, ...details] = overview.specifications;
+  lines.push(`  ${bold(heading!)}`);
+  for (const detail of details) lines.push(`   ${dim(MIDDOT)} ${detail}`);
   lines.push('');
   return lines;
 }

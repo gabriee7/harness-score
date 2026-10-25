@@ -72,6 +72,13 @@ JSON report the result is the optional `references` field, kept apart from
 archived spec changes are listed but not checked. The check reads files only:
 no network, no commands, nothing outside the scanned root.
 
+When the repository has an OpenSpec layout (`openspec/specs/`,
+`openspec/changes/`), the section also reports three independent properties:
+whether the structure is there, whether each active document has minimum
+content (a heading and some body; a `tasks.md` needs a list item), and the
+states of the references those documents contain. It never judges what the
+specification says, and there is no combined verdict.
+
 Example:
 
 ```

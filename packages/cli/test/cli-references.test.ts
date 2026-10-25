@@ -246,3 +246,38 @@ describe('--references: programmatic API', () => {
     expect(withReferences).toEqual(score(root));
   });
 });
+
+describe('--references: specifications', () => {
+  test('a repository without OpenSpec says so', () => {
+    const root = makeRepo(REPO);
+    expect(json([root, '--references']).references.specifications.structure.status).toBe('not-identified');
+    expect(run([root, '--references']).stdout).toContain('Specifications: no OpenSpec structure found');
+  });
+
+  test('an OpenSpec structure is reported with its three properties', () => {
+    const root = makeRepo({
+      'README.md': '# readme\n',
+      'openspec/specs/auth/spec.md': '# Auth\n\nThe system SHALL let users log in.\n',
+      'openspec/changes/add-login/proposal.md': '# Add login\n',
+      'openspec/changes/archive/old/proposal.md': '# Old\n\nDone.\n',
+    });
+    const { specifications } = json([root, '--references']).references;
+    expect(specifications.structure).toEqual({
+      status: 'identified',
+      convention: 'openspec',
+      parts: { specs: 1, activeChanges: 1, archivedChanges: 1 },
+    });
+    expect(specifications.properties.minimumContent).toEqual({
+      sufficient: 1,
+      empty: 0,
+      insufficient: 1,
+      unreadable: 0,
+    });
+    const { stdout } = run([root, '--references']);
+    expect(stdout).toContain(
+      'Specifications (OpenSpec): 1 spec documents · 1 active changes · 1 archived changes',
+    );
+    expect(stdout).toContain('minimum content: sufficient 1 · insufficient 1 · empty 0');
+    expect(run([root, '--references', '--md', '-', '--quiet']).stdout).toContain('### Specifications');
+  });
+});
