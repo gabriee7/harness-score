@@ -38,7 +38,8 @@ export type MarkdownNode =
       attribute: 'name' | 'id';
       value: TextSpan;
     }
-  | { type: 'frontmatter-field'; position: SourcePosition; key: string; values: TextSpan[] };
+  | { type: 'frontmatter-field'; position: SourcePosition; key: string; values: TextSpan[] }
+  | { type: 'heading'; position: SourcePosition; level: number; text: TextSpan };
 
 /** Column of a UTF-16 index in a line, counting code points. */
 function columnOf(line: string, index: number): number {
@@ -174,6 +175,11 @@ function scanFrontmatter(lines: string[], nodes: MarkdownNode[]): number {
 /* Body                                                                */
 /* ------------------------------------------------------------------ */
 
+/** ATX heading: `## Title ##`. Group 3 is the title without markers. */
+const ATX_HEADING_RE = /^( {0,3})(#{1,6})(?=[ \t]|$)[ \t]*(.*?)(?:[ \t]+#+)?[ \t]*$/;
+const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-{2,})[ \t]*$/;
+/** Lines that cannot be the text of a setext heading. */
+const NOT_PARAGRAPH_RE = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d+[.)](?:[ \t]|$)|[>|<=]|-{2,}|\[[^\]]+\]:)/;
 const FENCE_OPEN_RE = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
 const DEFINITION_RE = /^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>]*>|\S+)/;
 const AUTOLINK_RE = /^<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/;
@@ -379,12 +385,15 @@ export function scanMarkdown(content: string): MarkdownNode[] {
   let fence: { char: string; length: number; indent: number } | null = null;
   let block: Extract<MarkdownNode, { type: 'code-block' }> | null = null;
   let inComment = false;
+  /** The previous line, when it could be the text of a setext heading. */
+  let paragraph: TextSpan | null = null;
 
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     const lineNo = i + 1;
 
     if (fence && block) {
+      paragraph = null;
       if (isClosingFence(line, fence)) {
         fence = null;
         block = null;
@@ -407,6 +416,7 @@ export function scanMarkdown(content: string): MarkdownNode[] {
           lines: [],
         };
         nodes.push(block);
+        paragraph = null;
         continue;
       }
       const definition = DEFINITION_RE.exec(line);
@@ -416,8 +426,34 @@ export function scanMarkdown(content: string): MarkdownNode[] {
         const start = definition[0].length - raw.length + (wrapped ? 1 : 0);
         const destination = span(line, lineNo, start, start + raw.length - (wrapped ? 2 : 0));
         nodes.push({ type: 'link', syntax: 'definition', position: destination.position, destination });
+        paragraph = null;
         continue;
       }
+
+      const atx = ATX_HEADING_RE.exec(line);
+      if (atx) {
+        let start = atx[1]!.length + atx[2]!.length;
+        while (line[start] === ' ' || line[start] === '\t') start++;
+        const title = span(line, lineNo, start, start + atx[3]!.length);
+        nodes.push({ type: 'heading', position: title.position, level: atx[2]!.length, text: title });
+        paragraph = null;
+      } else {
+        const underline = SETEXT_UNDERLINE_RE.exec(line);
+        if (underline && paragraph) {
+          const level = underline[1]![0] === '=' ? 1 : 2;
+          nodes.push({ type: 'heading', position: paragraph.position, level, text: paragraph });
+          paragraph = null;
+          continue;
+        }
+        if (line.trim() === '' || NOT_PARAGRAPH_RE.test(line)) {
+          paragraph = null;
+        } else {
+          const start = line.length - line.trimStart().length;
+          paragraph = span(line, lineNo, start, line.trimEnd().length);
+        }
+      }
+    } else {
+      paragraph = null;
     }
 
     let cursor = 0;

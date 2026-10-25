@@ -337,7 +337,7 @@ export function extractReferences(doc: SourceDocument): ExtractionResult {
       if (doc.kind === 'scoped-rule' && FORMAL_FIELDS.has(node.key)) {
         for (const value of node.values) candidates.push(...fieldItems(value));
       }
-    } else {
+    } else if (node.type === 'html-anchor') {
       htmlAnchors.push({
         name: node.value.text,
         attribute: node.attribute,

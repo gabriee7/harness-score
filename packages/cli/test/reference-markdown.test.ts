@@ -296,6 +296,57 @@ describe('positions across platforms and Unicode', () => {
   });
 });
 
+function headings(content: string) {
+  return scanMarkdown(content)
+    .filter((n): n is Extract<MarkdownNode, { type: 'heading' }> => n.type === 'heading')
+    .map((n) => ({
+      level: n.level,
+      text: n.text.text,
+      line: n.text.position.line,
+      column: n.text.position.column,
+    }));
+}
+
+describe('headings', () => {
+  test('ATX headings: level, title and position', () => {
+    expect(headings('# One\n## Two ##\n###   Three')).toEqual([
+      { level: 1, text: 'One', line: 1, column: 3 },
+      { level: 2, text: 'Two', line: 2, column: 4 },
+      { level: 3, text: 'Three', line: 3, column: 7 },
+    ]);
+  });
+
+  test('a hash without a space, seven hashes or four spaces of indent are not headings', () => {
+    expect(headings('#hashtag\n####### seven\n    # indented')).toEqual([]);
+  });
+
+  test('an empty heading has an empty title', () => {
+    expect(headings('#')).toEqual([{ level: 1, text: '', line: 1, column: 2 }]);
+  });
+
+  test('setext headings take the line above the underline', () => {
+    expect(headings('Title\n=====\n\nSub\n---\n')).toEqual([
+      { level: 1, text: 'Title', line: 1, column: 1 },
+      { level: 2, text: 'Sub', line: 4, column: 1 },
+    ]);
+  });
+
+  test('an underline needs a paragraph line directly above it', () => {
+    expect(headings('- item\n---\n\ntext\n\n---\n\n> quote\n---')).toEqual([]);
+  });
+
+  test('headings inside fences and comments are ignored', () => {
+    expect(headings('```\n# no\n```\n<!--\n# hidden\n-->\n# yes')).toEqual([
+      { level: 1, text: 'yes', line: 7, column: 3 },
+    ]);
+  });
+
+  test('links inside a heading are still reported', () => {
+    expect(headings('## See [x](a.md)')[0]?.text).toBe('See [x](a.md)');
+    expect(links('## See [x](a.md)').map((l) => l.text)).toEqual(['a.md']);
+  });
+});
+
 describe('ordering and determinism', () => {
   const doc = [
     '---',

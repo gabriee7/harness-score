@@ -34,8 +34,9 @@ export type ReferenceState = 'consistent' | 'inconsistent' | 'not-evaluable' | '
 export type ReferenceStatus = ReferenceState | 'pending';
 
 export type AmbiguityReason = 'empty-destination' | 'no-type-indicator';
-export type UnsupportedReason = 'unsupported-glob';
-export type ReferenceReason = NotEvaluableReason | AmbiguityReason | UnsupportedReason;
+export type UnsupportedReason = 'unsupported-glob' | 'html-anchor' | 'non-markdown-anchor';
+export type InconsistencyReason = 'document-missing' | 'anchor-missing';
+export type ReferenceReason = NotEvaluableReason | AmbiguityReason | UnsupportedReason | InconsistencyReason;
 
 /** One occurrence of a reference in an operational document. */
 export interface ExtractedReference {
