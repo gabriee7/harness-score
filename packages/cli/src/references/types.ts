@@ -33,9 +33,14 @@ export type ReferenceState = 'consistent' | 'inconsistent' | 'not-evaluable' | '
 /** A state, or `pending` while the factual check has not run yet. */
 export type ReferenceStatus = ReferenceState | 'pending';
 
-export type AmbiguityReason = 'empty-destination' | 'no-type-indicator';
+export type AmbiguityReason = 'empty-destination' | 'no-type-indicator' | 'bare-name-not-found';
 export type UnsupportedReason = 'unsupported-glob' | 'html-anchor' | 'non-markdown-anchor';
-export type InconsistencyReason = 'document-missing' | 'anchor-missing';
+export type InconsistencyReason =
+  | 'document-missing'
+  | 'anchor-missing'
+  | 'target-missing'
+  | 'type-mismatch'
+  | 'glob-no-match';
 export type ReferenceReason = NotEvaluableReason | AmbiguityReason | UnsupportedReason | InconsistencyReason;
 
 /** One occurrence of a reference in an operational document. */
@@ -64,6 +69,9 @@ export interface ExtractedReference {
   rule: string;
   evidence: string;
 }
+
+/** A reference after the factual check: it always carries one of the five states. */
+export type ResolvedReference = Omit<ExtractedReference, 'state'> & { state: ReferenceState };
 
 export interface HtmlAnchor {
   name: string;
