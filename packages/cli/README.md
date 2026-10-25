@@ -54,7 +54,23 @@ harness-score --json              # full report as JSON
 harness-score --md report.md      # markdown report ("-" for stdout)
 harness-score --badge badge.svg   # SVG pill: harness + detected level (L0–L4)
 harness-score --min-level 3       # exit 1 if below L3 — the CI gate
+harness-score --references        # also check the references written in AGENTS.md, rules, skills and specs
 ```
+
+### Reference check (`--references`)
+
+`--references` adds an informational section that checks whether the files,
+directories, glob patterns and Markdown anchors cited in `AGENTS.md`,
+`CLAUDE.md`, `GEMINI.md`, scoped rules, skills and OpenSpec documents exist in
+the repository. Each occurrence is reported with its position and one of five
+states: consistent, inconsistent, not evaluable, not supported or ambiguous.
+
+It is opt-in and purely additional: without the flag the output is unchanged,
+and with it the score, the level and the exit code are unchanged too. In the
+JSON report the result is the optional `references` field, kept apart from
+`checks`. Documents under example, tutorial, fixture or demo directories and
+archived spec changes are listed but not checked. The check reads files only:
+no network, no commands, nothing outside the scanned root.
 
 Example:
 
