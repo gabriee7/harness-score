@@ -125,7 +125,7 @@ describe('--references: JSON', () => {
       normalizedTarget: 'src/gone.ts',
       state: 'inconsistent',
       reasonCode: 'target-missing',
-      rule: 'alg7.file-missing',
+      rule: 'path.file-missing',
     });
     expect(typeof missing.evidence).toBe('string');
   });

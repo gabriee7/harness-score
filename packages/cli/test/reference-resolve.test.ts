@@ -41,7 +41,7 @@ describe('files and directories', () => {
   test('an existing file is consistent', () => {
     expect(one('[a](docs/guide.md)')).toMatchObject({
       state: 'consistent',
-      rule: 'alg7.file-present',
+      rule: 'path.file-found',
       evidence: 'file docs/guide.md exists',
       reasonCode: null,
     });
@@ -51,16 +51,16 @@ describe('files and directories', () => {
     expect(one('[a](docs/nope.md)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'target-missing',
-      rule: 'alg7.file-missing',
+      rule: 'path.file-missing',
     });
   });
 
   test('directories, present and missing', () => {
-    expect(one('[a](docs/)')).toMatchObject({ state: 'consistent', rule: 'alg7.directory-present' });
+    expect(one('[a](docs/)')).toMatchObject({ state: 'consistent', rule: 'path.directory-found' });
     expect(one('[a](nope/)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'target-missing',
-      rule: 'alg7.directory-missing',
+      rule: 'path.directory-missing',
     });
   });
 
@@ -75,7 +75,7 @@ describe('files and directories', () => {
     expect(one('[a](docs/guide.md/)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'type-mismatch',
-      rule: 'alg7.type-mismatch',
+      rule: 'path.type-mismatch',
     });
     expect(one('[a](lib.js)')).toMatchObject({
       state: 'inconsistent',
@@ -102,7 +102,7 @@ describe('bare names', () => {
     expect(one('built with `Next.js`')).toMatchObject({
       state: 'ambiguous',
       reasonCode: 'bare-name-not-found',
-      rule: 'alg6.bare-name',
+      rule: 'path.bare-name-missing',
     });
   });
 
@@ -141,7 +141,7 @@ describe('globs', () => {
   test('a scope glob with a match is consistent', () => {
     expect(one(rule('src/**/*.ts'), BASE_FILES, options)).toMatchObject({
       state: 'consistent',
-      rule: 'alg8.glob-match',
+      rule: 'glob.matched',
       operational: true,
     });
     expect(one(rule('src/**/*.ts'), BASE_FILES, options).evidence).toMatch(/^\d+ matching file/);
@@ -151,7 +151,7 @@ describe('globs', () => {
     expect(one(rule('lib/**'), BASE_FILES, options)).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'glob-no-match',
-      rule: 'alg8.glob-no-match',
+      rule: 'glob.no-match',
     });
   });
 
@@ -159,17 +159,17 @@ describe('globs', () => {
     expect(one('`nothing/**/*.zz`')).toMatchObject({
       state: 'not-evaluable',
       reasonCode: 'non-operational-mention',
-      rule: 'alg5.glob-illustrative',
+      rule: 'glob.mention',
     });
   });
 });
 
 describe('states decided at extraction are kept', () => {
   test.each([
-    ['[a](https://example.com/x)', 'not-evaluable', 'alg4.external'],
-    ['[a]($HOME/x.md)', 'not-evaluable', 'alg4.dynamic'],
-    ['`!src/*.ts`', 'not-supported', 'alg5.glob-unsupported'],
-    ['[a]()', 'ambiguous', 'alg4.empty-destination'],
+    ['[a](https://example.com/x)', 'not-evaluable', 'target.external'],
+    ['[a]($HOME/x.md)', 'not-evaluable', 'target.dynamic'],
+    ['`!src/*.ts`', 'not-supported', 'glob.unsupported'],
+    ['[a]()', 'ambiguous', 'target.empty'],
   ])('%s', (source, state, rule) => {
     expect(one(source)).toMatchObject({ state, rule });
   });
@@ -177,7 +177,7 @@ describe('states decided at extraction are kept', () => {
 
 describe('anchors', () => {
   test('anchors are verified against the document headings', () => {
-    expect(one('[a](docs/api.md#login)')).toMatchObject({ state: 'consistent', rule: 'alg9.anchor-present' });
+    expect(one('[a](docs/api.md#login)')).toMatchObject({ state: 'consistent', rule: 'anchor.found' });
     expect(one('[a](docs/api.md#nope)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'anchor-missing',
@@ -210,7 +210,7 @@ describe('incomplete scans', () => {
     expect(one('[a](docs/nope.md)', BASE_FILES, { incomplete: global })).toMatchObject({
       state: 'not-evaluable',
       reasonCode: 'incomplete-scan',
-      rule: 'alg6.incomplete-scan',
+      rule: 'scan.incomplete',
     });
     expect(one('`Next.js`', BASE_FILES, { incomplete: global }).state).toBe('not-evaluable');
   });

@@ -79,6 +79,10 @@ content (a heading and some body; a `tasks.md` needs a list item), and the
 states of the references those documents contain. It never judges what the
 specification says, and there is no combined verdict.
 
+The exact rules (what counts as a reference, every outcome and its rule id, the
+glob language and the anchor convention) are in
+[REFERENCE-CHECK.md](REFERENCE-CHECK.md).
+
 Example:
 
 ```

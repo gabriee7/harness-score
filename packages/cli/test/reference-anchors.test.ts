@@ -109,7 +109,7 @@ describe('anchor verification', () => {
     expect(verdictOf('[a](#configuração-local)')).toEqual({
       state: 'consistent',
       reasonCode: null,
-      rule: 'alg9.anchor-present',
+      rule: 'anchor.found',
       evidence: 'heading anchor "configuração-local" found in AGENTS.md',
     });
   });
@@ -123,7 +123,7 @@ describe('anchor verification', () => {
   test('other-document anchor that exists', () => {
     expect(verdictOf('[a](docs/api.md#Login)')).toMatchObject({
       state: 'consistent',
-      rule: 'alg9.anchor-present',
+      rule: 'anchor.found',
     });
   });
 
@@ -131,7 +131,7 @@ describe('anchor verification', () => {
     expect(verdictOf('[a](docs/ausente.md#secao)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'document-missing',
-      rule: 'alg9.document-missing',
+      rule: 'anchor.document-missing',
     });
   });
 
@@ -139,7 +139,7 @@ describe('anchor verification', () => {
     expect(verdictOf('[a](docs/api.md#secao-inexistente)')).toMatchObject({
       state: 'inconsistent',
       reasonCode: 'anchor-missing',
-      rule: 'alg9.anchor-missing',
+      rule: 'anchor.missing',
     });
   });
 
@@ -151,7 +151,7 @@ describe('anchor verification', () => {
     expect(verdictOf('[a](docs/api.md#legacy)')).toMatchObject({
       state: 'not-supported',
       reasonCode: 'html-anchor',
-      rule: 'alg9.html-anchor',
+      rule: 'anchor.html',
     });
   });
 

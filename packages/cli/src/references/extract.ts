@@ -12,15 +12,17 @@ import { normalizeFragment } from './anchors.js';
 import { parseGlob } from './glob.js';
 import { positionWithin, type SourcePosition, scanMarkdown, type TextSpan } from './markdown.js';
 import { type NormalizeResult, normalizeTarget } from './normalize.js';
-import type {
-  ExtractedReference,
-  ExtractionResult,
-  HtmlAnchor,
-  ReferenceForm,
-  ReferenceReason,
-  ReferenceStatus,
-  ReferenceSyntax,
-  SourceArtifactKind,
+import {
+  type ExtractedReference,
+  type ExtractionResult,
+  type HtmlAnchor,
+  type ReferenceForm,
+  type ReferenceReason,
+  type ReferenceRule,
+  type ReferenceStatus,
+  type ReferenceSyntax,
+  RULES,
+  type SourceArtifactKind,
 } from './types.js';
 
 export interface SourceDocument {
@@ -180,7 +182,7 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
 
   const result = (
     state: ReferenceStatus,
-    rule: string,
+    rule: ReferenceRule,
     evidence: string,
     fields: Partial<ExtractedReference> = {},
   ): ExtractedReference => ({
@@ -201,12 +203,12 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
     evidence,
     ...fields,
   });
-  const ambiguous = (rule: string, reason: ReferenceReason, evidence: string, f = {}) =>
+  const ambiguous = (rule: ReferenceRule, reason: ReferenceReason, evidence: string, f = {}) =>
     result('ambiguous', rule, evidence, { reasonCode: reason, ...f });
 
   const trimmed = raw.trim();
   if (trimmed === '') {
-    return ambiguous('alg4.empty-destination', 'empty-destination', 'the destination is empty');
+    return ambiguous(RULES.targetEmpty, 'empty-destination', 'the destination is empty');
   }
 
   // A fragment starts at `#`; a query (`?`) exists only in hyperlinks, where `?` is
@@ -227,9 +229,9 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
   if (pathPart === '' && fragment !== null) {
     const slug = normalizeFragment(fragment);
     if (slug === '') {
-      return ambiguous('alg4.empty-destination', 'empty-destination', 'the anchor has no name');
+      return ambiguous(RULES.targetEmpty, 'empty-destination', 'the anchor has no name');
     }
-    return result('pending', 'alg4.anchor-same-doc', 'anchor in the same document', {
+    return result('pending', RULES.anchorSameDocument, 'anchor in the same document', {
       form: 'anchor-same-doc',
       normalizedTarget: slug,
       anchor: slug,
@@ -244,18 +246,18 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
   });
 
   if (normalized.kind === 'empty') {
-    return ambiguous('alg4.empty-destination', 'empty-destination', 'the destination is empty');
+    return ambiguous(RULES.targetEmpty, 'empty-destination', 'the destination is empty');
   }
   if (normalized.kind === 'not-evaluable') {
     const { reason } = normalized;
     const rule =
       reason === 'external-resource'
-        ? 'alg4.external'
+        ? RULES.targetExternal
         : reason === 'variable-dependent' || reason === 'execution-dependent'
-          ? 'alg4.dynamic'
+          ? RULES.targetDynamic
           : reason === 'root-escape-attempt'
-            ? 'policy.root-escape'
-            : 'policy.absolute-path';
+            ? RULES.targetOutsideRoot
+            : RULES.targetAbsolute;
     return result('not-evaluable', rule, `target cannot be checked locally: ${reason}`, {
       reasonCode: reason,
     });
@@ -276,7 +278,7 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
 
   if (fragment !== null && normalizeFragment(fragment) !== '') {
     const slug = normalizeFragment(fragment);
-    return result('pending', 'alg5.anchor-other-doc', 'anchor in another document', {
+    return result('pending', RULES.anchorOtherDocument, 'anchor in another document', {
       ...located('anchor-other-doc', { anchor: slug }),
     });
   }
@@ -284,7 +286,7 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
   if (/[*?[\]{}]/.test(pathPart) || pathPart.startsWith('!')) {
     const glob = parseGlob(pathPart);
     if (!glob.supported) {
-      return result('not-supported', 'alg5.glob-unsupported', `glob syntax not supported: ${glob.reason}`, {
+      return result('not-supported', RULES.globUnsupported, `glob syntax not supported: ${glob.reason}`, {
         form: 'glob-pattern',
         normalizedTarget: pathPart,
         reasonCode: 'unsupported-glob',
@@ -293,24 +295,24 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
     if (candidate.syntax !== 'formal-field') {
       return result(
         'not-evaluable',
-        'alg5.glob-illustrative',
+        RULES.globMention,
         'glob mentioned in text, not declared as an active scope',
         { ...located('glob-pattern'), reasonCode: 'non-operational-mention' },
       );
     }
-    return result('pending', 'alg5.glob-pending', 'glob declared as an active scope', {
+    return result('pending', RULES.globScope, 'glob declared as an active scope', {
       ...located('glob-pattern'),
       operational: true,
     });
   }
 
   if (normalized.directoryHint) {
-    return result('pending', 'alg5.directory', 'explicit directory', located('directory-path'));
+    return result('pending', RULES.pathDirectory, 'explicit directory', located('directory-path'));
   }
   if (hasKnownExtension(pathPart)) {
-    return result('pending', 'alg5.file', 'known file extension', located('file-path'));
+    return result('pending', RULES.pathFile, 'known file extension', located('file-path'));
   }
-  return ambiguous('alg5.ambiguous', 'no-type-indicator', 'no explicit indicator of file or directory', {
+  return ambiguous(RULES.pathUntyped, 'no-type-indicator', 'no explicit indicator of file or directory', {
     normalizedTarget: target,
     alternateTarget,
   });

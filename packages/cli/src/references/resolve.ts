@@ -10,7 +10,14 @@
 import type { ScanContext } from '../types.js';
 import { createAnchorVerifier } from './anchors.js';
 import { filterGlob } from './glob.js';
-import type { ExtractedReference, ReferenceReason, ReferenceState, ResolvedReference } from './types.js';
+import {
+  type ExtractedReference,
+  type ReferenceReason,
+  type ReferenceRule,
+  type ReferenceState,
+  type ResolvedReference,
+  RULES,
+} from './types.js';
 
 export type ResolveContext = Pick<
   ScanContext,
@@ -92,7 +99,7 @@ function scanMayHide(ctx: ResolveContext, probe: string): boolean {
 function settle(
   ref: ExtractedReference,
   state: ReferenceState,
-  rule: string,
+  rule: ReferenceRule,
   evidence: string,
   reasonCode: ReferenceReason | null = null,
 ): ResolvedReference {
@@ -109,7 +116,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
     settle(
       ref,
       'not-evaluable',
-      'alg6.incomplete-scan',
+      RULES.scanIncomplete,
       `the scan was incomplete and may not include ${target || 'the repository root'}`,
       'incomplete-scan',
     );
@@ -132,14 +139,15 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
     if (found !== undefined) {
       const where = found === primary ? '' : ' relative to the document';
       const shown = found === '' ? 'the repository root' : found;
-      return settle(ref, 'consistent', `alg7.${kind}-present`, `${kind} ${shown} exists${where}${note}`);
+      const rule = wantsDirectory ? RULES.pathDirectoryFound : RULES.pathFileFound;
+      return settle(ref, 'consistent', rule, `${kind} ${shown} exists${where}${note}`);
     }
     const wrongType = targets.find(isOther);
     if (wrongType !== undefined) {
       return settle(
         ref,
         'inconsistent',
-        'alg7.type-mismatch',
+        RULES.pathTypeMismatch,
         `${wrongType} exists but is a ${other}, not a ${kind}${note}`,
         'type-mismatch',
       );
@@ -149,7 +157,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
       return settle(
         ref,
         'ambiguous',
-        'alg6.bare-name',
+        RULES.pathBareNameMissing,
         `"${ref.rawText}" was not found; a bare name may be a mention rather than a path`,
         'bare-name-not-found',
       );
@@ -157,7 +165,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
     return settle(
       ref,
       'inconsistent',
-      `alg7.${kind}-missing`,
+      wantsDirectory ? RULES.pathDirectoryMissing : RULES.pathFileMissing,
       `no ${kind} at ${targets.join(' or ')}`,
       'target-missing',
     );
@@ -170,7 +178,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
       return settle(
         ref,
         'not-supported',
-        'alg8.glob-unsupported',
+        RULES.globUnsupported,
         `glob ${pattern} is not supported`,
         'unsupported-glob',
       );
@@ -179,7 +187,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
       return settle(
         ref,
         'consistent',
-        'alg8.glob-match',
+        RULES.globMatched,
         `${matches.length} matching file(s), e.g. ${matches[0]}${note}`,
       );
     }
@@ -187,7 +195,7 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
     return settle(
       ref,
       'inconsistent',
-      'alg8.glob-no-match',
+      RULES.globNoMatch,
       `no scanned file matches ${pattern}`,
       'glob-no-match',
     );
@@ -226,7 +234,12 @@ export function createResolver(ctx: ResolveContext): (reference: ExtractedRefere
       case 'anchor-other-doc':
         return checkAnchor(ref);
       default:
-        return settle(ref, 'not-supported', 'alg2.unsupported-type', 'reference type is not supported');
+        return settle(
+          ref,
+          'not-supported',
+          RULES.referenceUnsupportedType,
+          'reference type is not supported',
+        );
     }
   };
 }

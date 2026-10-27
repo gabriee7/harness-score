@@ -19,11 +19,13 @@ export type { SourcePosition } from './references/markdown.js';
 export type {
   ReferenceForm,
   ReferenceReason,
+  ReferenceRule,
   ReferenceState,
   ReferenceSyntax,
   ResolvedReference,
   SourceArtifactKind,
 } from './references/types.js';
+export { RULES } from './references/types.js';
 export { renderBadge } from './report/badge.js';
 export { renderMarkdown } from './report/markdown.js';
 export { renderTerminal } from './report/terminal.js';

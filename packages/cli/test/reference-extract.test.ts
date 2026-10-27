@@ -33,7 +33,7 @@ describe('hyperlinks', () => {
       operational: false,
       state: 'pending',
       reasonCode: null,
-      rule: 'alg5.file',
+      rule: 'path.file',
       evidence: 'known file extension',
     });
   });
@@ -49,12 +49,12 @@ describe('hyperlinks', () => {
   });
 
   test('directory links, with and without the trailing slash', () => {
-    expect(only('[d](docs/)')).toMatchObject({ form: 'directory-path', rule: 'alg5.directory' });
+    expect(only('[d](docs/)')).toMatchObject({ form: 'directory-path', rule: 'path.directory' });
     expect(only('[d](docs)')).toMatchObject({
       form: null,
       state: 'ambiguous',
       reasonCode: 'no-type-indicator',
-      rule: 'alg5.ambiguous',
+      rule: 'path.untyped',
     });
   });
 
@@ -72,7 +72,7 @@ describe('hyperlinks', () => {
     expect(only('[a]()')).toMatchObject({
       state: 'ambiguous',
       reasonCode: 'empty-destination',
-      rule: 'alg4.empty-destination',
+      rule: 'target.empty',
     });
   });
 
@@ -93,7 +93,7 @@ describe('anchors', () => {
       normalizedTarget: 'instalação',
       anchor: 'instalação',
       state: 'pending',
-      rule: 'alg4.anchor-same-doc',
+      rule: 'anchor.same-document',
     });
   });
 
@@ -110,7 +110,7 @@ describe('anchors', () => {
       normalizedTarget: 'docs/api.md',
       anchor: 'login',
       state: 'pending',
-      rule: 'alg5.anchor-other-doc',
+      rule: 'anchor.other-document',
     });
   });
 
@@ -136,13 +136,13 @@ describe('anchors', () => {
 
 describe('targets that cannot be checked locally', () => {
   test.each([
-    ['[a](https://example.com/x)', 'external-resource', 'alg4.external'],
-    ['[a]($HOME/x.md)', 'variable-dependent', 'alg4.dynamic'],
-    ['[a](../../../x.md)', 'root-escape-attempt', 'policy.root-escape'],
-    ['`/etc/passwd`', 'inaccessible-local-target', 'policy.absolute-path'],
-    ['`$HOME/config.md`', 'variable-dependent', 'alg4.dynamic'],
-    ['`https://example.com/a`', 'external-resource', 'alg4.external'],
-    ['`${DIR}/run.sh`', 'variable-dependent', 'alg4.dynamic'],
+    ['[a](https://example.com/x)', 'external-resource', 'target.external'],
+    ['[a]($HOME/x.md)', 'variable-dependent', 'target.dynamic'],
+    ['[a](../../../x.md)', 'root-escape-attempt', 'target.outside-root'],
+    ['`/etc/passwd`', 'inaccessible-local-target', 'target.absolute'],
+    ['`$HOME/config.md`', 'variable-dependent', 'target.dynamic'],
+    ['`https://example.com/a`', 'external-resource', 'target.external'],
+    ['`${DIR}/run.sh`', 'variable-dependent', 'target.dynamic'],
   ])('%s', (source, reason, rule) => {
     expect(only(source)).toMatchObject({ state: 'not-evaluable', reasonCode: reason, rule });
   });
@@ -188,7 +188,7 @@ describe('inline code', () => {
       form: 'glob-pattern',
       state: 'not-evaluable',
       reasonCode: 'non-operational-mention',
-      rule: 'alg5.glob-illustrative',
+      rule: 'glob.mention',
       operational: false,
     });
   });
@@ -202,7 +202,7 @@ describe('inline code', () => {
     expect(only(source)).toMatchObject({
       state: 'not-supported',
       reasonCode: 'unsupported-glob',
-      rule: 'alg5.glob-unsupported',
+      rule: 'glob.unsupported',
       evidence: `glob syntax not supported: ${reason}`,
     });
   });
@@ -263,7 +263,7 @@ describe('formal fields', () => {
         form: 'glob-pattern',
         state: 'pending',
         operational: true,
-        rule: 'alg5.glob-pending',
+        rule: 'glob.scope',
       });
     }
   });

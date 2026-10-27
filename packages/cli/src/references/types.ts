@@ -43,6 +43,44 @@ export type InconsistencyReason =
   | 'glob-no-match';
 export type ReferenceReason = NotEvaluableReason | AmbiguityReason | UnsupportedReason | InconsistencyReason;
 
+/**
+ * Every rule a reference can end on. The values are public: they appear in the
+ * JSON report and are documented one by one in packages/cli/REFERENCE-CHECK.md.
+ */
+export const RULES = {
+  targetEmpty: 'target.empty',
+  targetExternal: 'target.external',
+  targetDynamic: 'target.dynamic',
+  targetAbsolute: 'target.absolute',
+  targetOutsideRoot: 'target.outside-root',
+  pathUntyped: 'path.untyped',
+  pathFile: 'path.file',
+  pathDirectory: 'path.directory',
+  pathFileFound: 'path.file-found',
+  pathDirectoryFound: 'path.directory-found',
+  pathFileMissing: 'path.file-missing',
+  pathDirectoryMissing: 'path.directory-missing',
+  pathTypeMismatch: 'path.type-mismatch',
+  pathBareNameMissing: 'path.bare-name-missing',
+  globMention: 'glob.mention',
+  globUnsupported: 'glob.unsupported',
+  globScope: 'glob.scope',
+  globMatched: 'glob.matched',
+  globNoMatch: 'glob.no-match',
+  anchorSameDocument: 'anchor.same-document',
+  anchorOtherDocument: 'anchor.other-document',
+  anchorFound: 'anchor.found',
+  anchorMissing: 'anchor.missing',
+  anchorDocumentMissing: 'anchor.document-missing',
+  anchorHtml: 'anchor.html',
+  anchorNonMarkdown: 'anchor.non-markdown',
+  anchorUnreadable: 'anchor.unreadable',
+  scanIncomplete: 'scan.incomplete',
+  referenceUnsupportedType: 'reference.unsupported-type',
+} as const;
+
+export type ReferenceRule = (typeof RULES)[keyof typeof RULES];
+
 /** One occurrence of a reference in an operational document. */
 export interface ExtractedReference {
   sourceArtifact: string;
@@ -65,8 +103,8 @@ export interface ExtractedReference {
   operational: boolean;
   state: ReferenceStatus;
   reasonCode: ReferenceReason | null;
-  /** Identifier of the rule that produced the state. */
-  rule: string;
+  /** Identifier of the rule that produced the state (see REFERENCE-CHECK.md). */
+  rule: ReferenceRule;
   evidence: string;
 }
 

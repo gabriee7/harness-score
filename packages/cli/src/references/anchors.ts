@@ -15,7 +15,7 @@
 
 import type { ScanContext } from '../types.js';
 import { scanMarkdown } from './markdown.js';
-import type { ExtractedReference, ReferenceReason } from './types.js';
+import { type ExtractedReference, type ReferenceReason, type ReferenceRule, RULES } from './types.js';
 
 /** Decode percent escapes, compose accents (NFC) and lowercase a link fragment. */
 export function normalizeFragment(raw: string): string {
@@ -104,7 +104,7 @@ export function documentAnchors(content: string): DocumentAnchors {
 export interface AnchorVerdict {
   state: 'consistent' | 'inconsistent' | 'not-supported' | 'not-evaluable';
   reasonCode: ReferenceReason | null;
-  rule: string;
+  rule: ReferenceRule;
   evidence: string;
 }
 
@@ -139,7 +139,7 @@ export function createAnchorVerifier(
         return {
           state: 'inconsistent',
           reasonCode: 'document-missing',
-          rule: 'alg9.document-missing',
+          rule: RULES.anchorDocumentMissing,
           evidence: `document ${path} does not exist`,
         };
       }
@@ -147,7 +147,7 @@ export function createAnchorVerifier(
         return {
           state: 'not-supported',
           reasonCode: 'non-markdown-anchor',
-          rule: 'alg9.non-markdown',
+          rule: RULES.anchorNonMarkdown,
           evidence: `${path} is not a Markdown document, so its anchors are not resolved`,
         };
       }
@@ -158,7 +158,7 @@ export function createAnchorVerifier(
       return {
         state: 'not-evaluable',
         reasonCode: 'inaccessible-local-target',
-        rule: 'alg9.unreadable',
+        rule: RULES.anchorUnreadable,
         evidence: `${path} could not be read`,
       };
     }
@@ -166,7 +166,7 @@ export function createAnchorVerifier(
       return {
         state: 'consistent',
         reasonCode: null,
-        rule: 'alg9.anchor-present',
+        rule: RULES.anchorFound,
         evidence: `heading anchor "${slug}" found in ${path}`,
       };
     }
@@ -175,7 +175,7 @@ export function createAnchorVerifier(
       return {
         state: 'consistent',
         reasonCode: null,
-        rule: 'alg9.anchor-present',
+        rule: RULES.anchorFound,
         evidence: `heading anchor "${slug}" found in ${path} after removing accents`,
       };
     }
@@ -183,14 +183,14 @@ export function createAnchorVerifier(
       return {
         state: 'not-supported',
         reasonCode: 'html-anchor',
-        rule: 'alg9.html-anchor',
+        rule: RULES.anchorHtml,
         evidence: `"${slug}" is declared by an HTML anchor in ${path}, which is not resolved`,
       };
     }
     return {
       state: 'inconsistent',
       reasonCode: 'anchor-missing',
-      rule: 'alg9.anchor-missing',
+      rule: RULES.anchorMissing,
       evidence: `no heading anchor "${slug}" in ${path}`,
     };
   };
