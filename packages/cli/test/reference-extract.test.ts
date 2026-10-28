@@ -210,6 +210,23 @@ describe('inline code', () => {
   test('Windows separators are normalized for plain paths', () => {
     expect(only('`src\\lib\\a.ts`').normalizedTarget).toBe('src/lib/a.ts');
   });
+
+  test.each([
+    ['`src/app.ts:42`', 'src/app.ts:42', 'src/app.ts'],
+    ['`src/app.ts:42:7`', 'src/app.ts:42:7', 'src/app.ts'],
+    ['`app.ts:3`', 'app.ts:3', 'app.ts'],
+  ])('a trailing :line is not part of the path: %s', (source, raw, target) => {
+    expect(only(source)).toMatchObject({ rawText: raw, normalizedTarget: target, form: 'file-path' });
+  });
+
+  test('the :line suffix is only removed after a known extension', () => {
+    expect(refs('`localhost:8080`')).toEqual([]);
+    expect(only('`https://example.com:8080`')).toMatchObject({
+      state: 'not-evaluable',
+      reasonCode: 'external-resource',
+    });
+    expect(only('`docs/notes:12`')).toMatchObject({ normalizedTarget: 'docs/notes:12', state: 'ambiguous' });
+  });
 });
 
 describe('code blocks', () => {

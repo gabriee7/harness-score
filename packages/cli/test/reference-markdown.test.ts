@@ -347,6 +347,83 @@ describe('headings', () => {
   });
 });
 
+describe('indented code blocks', () => {
+  test('four spaces after a blank line start a code block; its links are not links', () => {
+    const doc = 'Intro\n\n    [a](b.md) `c`\n    second line\n\nafter [d](e.md)';
+    const [block] = blocks(doc);
+    expect(block?.info).toBe('');
+    expect(block?.lines.map((l) => [l.text, l.position.line, l.position.column])).toEqual([
+      ['[a](b.md) `c`', 3, 5],
+      ['second line', 4, 5],
+    ]);
+    expect(links(doc).map((l) => l.text)).toEqual(['e.md']);
+    expect(inlineCode(doc)).toEqual([]);
+  });
+
+  test('a tab counts as four columns, and so does the start of the document', () => {
+    expect(blocks('\tcode/x.md')[0]?.lines.map((l) => l.text)).toEqual(['code/x.md']);
+    expect(blocks('    code/x.md')[0]?.lines.map((l) => l.text)).toEqual(['code/x.md']);
+  });
+
+  test('a heading lets a block start on the next line', () => {
+    expect(blocks('# Title\n    code/x.md')[0]?.lines.map((l) => l.text)).toEqual(['code/x.md']);
+  });
+
+  test('blank lines inside the block keep it open', () => {
+    const [block] = blocks('\n    a.md\n\n    b.md\nend');
+    expect(block?.lines.map((l) => l.text)).toEqual(['a.md', 'b.md']);
+  });
+
+  test('indented text right after a paragraph line continues the paragraph', () => {
+    expect(blocks('Para\n    [a](b.md)')).toEqual([]);
+    expect(links('Para\n    [a](b.md)').map((l) => l.text)).toEqual(['b.md']);
+  });
+
+  test('indented text inside a list continues the item', () => {
+    const doc = '- item\n\n    [a](b.md)\n\n1. other\n\n    [c](d.md)';
+    expect(blocks(doc)).toEqual([]);
+    expect(links(doc).map((l) => l.text)).toEqual(['b.md', 'd.md']);
+  });
+
+  test('a list ends at the next unindented paragraph', () => {
+    const doc = '- item\n\nParagraph\n\n    code/x.md';
+    expect(blocks(doc)[0]?.lines.map((l) => l.text)).toEqual(['code/x.md']);
+  });
+
+  test('headings inside an indented block are not headings', () => {
+    expect(headings('\n    # not a heading')).toEqual([]);
+  });
+
+  test('a fence wins over indentation', () => {
+    const [block] = blocks('\n    ```sh\n    run.sh\n    ```');
+    expect(block?.info).toBe('sh');
+    expect(block?.lines.map((l) => l.text)).toEqual(['run.sh']);
+  });
+});
+
+describe('pathological lines are scanned in linear time', () => {
+  const LIMIT_MS = 1500;
+  test.each([
+    ['unmatched brackets', '['.repeat(100_000)],
+    ['unmatched backticks', '` '.repeat(100_000)],
+    ['backtick runs of growing length', Array.from({ length: 400 }, (_, i) => '`'.repeat(i + 1)).join(' ')],
+    ['unclosed angle brackets', '<a '.repeat(50_000)],
+    ['links with unclosed destinations', '[a](<'.repeat(30_000)],
+    ['many inline code spans', '`a` '.repeat(30_000)],
+    ['many links', '[a](b.md) '.repeat(20_000)],
+  ])('%s', (_name, line) => {
+    const start = performance.now();
+    scanMarkdown(line);
+    expect(performance.now() - start).toBeLessThan(LIMIT_MS);
+  });
+
+  test('the results on a long line are still exact', () => {
+    const line = `${'['.repeat(10_000)} [x](a.md) \`code\``;
+    expect(links(line).map((l) => [l.text, l.column])).toEqual([['a.md', 10_006]]);
+    expect(inlineCode(line).map((c) => c.text)).toEqual(['code']);
+  });
+});
+
 describe('ordering and determinism', () => {
   const doc = [
     '---',

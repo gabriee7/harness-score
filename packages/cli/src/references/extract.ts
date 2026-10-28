@@ -104,7 +104,10 @@ const FORMAL_FIELDS = new Set(['globs', 'paths', 'applyTo']);
 
 interface Candidate {
   syntax: ReferenceSyntax;
+  /** The text as written. */
   text: string;
+  /** What to look up, when it differs from the text (a `:line` suffix removed). */
+  target?: string;
   position: SourcePosition;
 }
 
@@ -127,8 +130,17 @@ function codeTokens(span: TextSpan): Candidate[] {
     const leading = /^[,:]+/.exec(match[0])?.[0].length ?? 0;
     const text = match[0].slice(leading).replace(/[.,:!]+$/, '');
     if (text === '' || text.startsWith('-') || !/[\p{L}\p{N}]/u.test(text)) continue;
-    if (!/[\\/]/.test(text) && !hasKnownExtension(text)) continue;
-    out.push({ syntax, text, position: positionWithin(span, (match.index ?? 0) + leading) });
+    // `src/app.ts:42` and `src/app.ts:42:7` point into a file; the line is not part of the path.
+    const suffix = /:\d+(?::\d+)?$/.exec(text);
+    const target =
+      suffix && hasKnownExtension(text.slice(0, suffix.index)) ? text.slice(0, suffix.index) : text;
+    if (!/[\\/]/.test(target) && !hasKnownExtension(target)) continue;
+    out.push({
+      syntax,
+      text,
+      ...(target === text ? {} : { target }),
+      position: positionWithin(span, (match.index ?? 0) + leading),
+    });
   }
   return out;
 }
@@ -206,7 +218,7 @@ function build(doc: SourceDocument, candidate: Candidate): ExtractedReference {
   const ambiguous = (rule: ReferenceRule, reason: ReferenceReason, evidence: string, f = {}) =>
     result('ambiguous', rule, evidence, { reasonCode: reason, ...f });
 
-  const trimmed = raw.trim();
+  const trimmed = (candidate.target ?? raw).trim();
   if (trimmed === '') {
     return ambiguous(RULES.targetEmpty, 'empty-destination', 'the destination is empty');
   }

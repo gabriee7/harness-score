@@ -41,15 +41,28 @@ export type MarkdownNode =
   | { type: 'frontmatter-field'; position: SourcePosition; key: string; values: TextSpan[] }
   | { type: 'heading'; position: SourcePosition; level: number; text: TextSpan };
 
-/** Column of a UTF-16 index in a line, counting code points. */
+/**
+ * Column of a UTF-16 index in a line, counting code points. Positions on one line
+ * are asked for mostly left to right, so the count resumes from the last answer
+ * instead of restarting at the start of the line.
+ */
+let columnLine = '';
+let columnIndex = 0;
+let columnCount = 0;
 function columnOf(line: string, index: number): number {
-  let count = 0;
-  for (let i = 0; i < index; i++) {
-    const code = line.charCodeAt(i);
-    if (code >= 0xd800 && code <= 0xdbff) i++;
-    count++;
+  if (line !== columnLine || index < columnIndex) {
+    columnLine = line;
+    columnIndex = 0;
+    columnCount = 0;
   }
-  return count + 1;
+  let i = columnIndex;
+  while (i < index) {
+    const code = line.charCodeAt(i);
+    i += code >= 0xd800 && code <= 0xdbff ? 2 : 1;
+    columnCount++;
+  }
+  columnIndex = i;
+  return columnCount + 1;
 }
 
 function span(line: string, lineNo: number, start: number, end: number): TextSpan {
@@ -181,9 +194,34 @@ const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-{2,})[ \t]*$/;
 /** Lines that cannot be the text of a setext heading. */
 const NOT_PARAGRAPH_RE = /^ {0,3}(?:[-*+](?:[ \t]|$)|\d+[.)](?:[ \t]|$)|[>|<=]|-{2,}|\[[^\]]+\]:)/;
 const FENCE_OPEN_RE = /^([ \t]*)(`{3,}|~{3,})(.*)$/;
+const LIST_ITEM_RE = /^ {0,3}(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
+
+/** Columns of leading whitespace; a tab advances to the next multiple of 4. */
+function indentWidth(line: string): number {
+  let width = 0;
+  for (const ch of line) {
+    if (ch === ' ') width++;
+    else if (ch === '\t') width += 4 - (width % 4);
+    else break;
+  }
+  return width;
+}
+
+/** Index after the first 4 columns of indentation, or -1 when the line is indented less. */
+function indentedContentStart(line: string): number {
+  let width = 0;
+  let i = 0;
+  while (i < line.length && width < 4) {
+    if (line[i] === ' ') width++;
+    else if (line[i] === '\t') width += 4 - (width % 4);
+    else return -1;
+    i++;
+  }
+  return width >= 4 ? i : -1;
+}
 const DEFINITION_RE = /^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>]*>|\S+)/;
-const AUTOLINK_RE = /^<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/;
-const ANCHOR_TAG_RE = /^<a\b[^>]*>/i;
+const AUTOLINK_RE = /<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/y;
+const ANCHOR_TAG_RE = /<a\b[^>]*>/iy;
 const ANCHOR_ATTRIBUTE_RE = /\b(name|id)\s*=\s*(?:"([^"]*)"|'([^']*)')/dgi;
 
 function isClosingFence(line: string, fence: { char: string; length: number }): boolean {
@@ -191,39 +229,89 @@ function isClosingFence(line: string, fence: { char: string; length: number }): 
   return Boolean(match && match[1]![0] === fence.char && match[1]!.length >= fence.length);
 }
 
+/**
+ * Lookups shared by every inline scan of one line segment, so that pathological
+ * lines (thousands of unmatched `[` or backticks) are scanned in linear time.
+ */
+interface InlineContext {
+  line: string;
+  /** Start of every maximal backtick run, by run length, in increasing order. */
+  runs: Map<number, number[]>;
+  /** Closing `]` found for an opening `[`, per search limit; -1 when there is none. */
+  closes: Map<number, Map<number, number>>;
+  /** Last answer of `nextIndexOf` per searched character. */
+  next: Map<string, { from: number; at: number }>;
+}
+
+function inlineContext(line: string): InlineContext {
+  const runs = new Map<number, number[]>();
+  for (let i = 0; i < line.length; ) {
+    if (line[i] !== '`') {
+      i++;
+      continue;
+    }
+    let end = i;
+    while (line[end] === '`') end++;
+    const starts = runs.get(end - i);
+    if (starts) starts.push(i);
+    else runs.set(end - i, [i]);
+    i = end;
+  }
+  return { line, runs, closes: new Map(), next: new Map() };
+}
+
+/** `line.indexOf(char, from)`, remembering the answer for later, larger `from`. */
+function nextIndexOf(ctx: InlineContext, char: string, from: number): number {
+  const cached = ctx.next.get(char);
+  if (cached && from >= cached.from && (cached.at === -1 || from <= cached.at)) return cached.at;
+  const at = ctx.line.indexOf(char, from);
+  ctx.next.set(char, { from, at });
+  return at;
+}
+
+/** First start in a sorted array that is at least `min`. */
+function firstAtLeast(starts: number[], min: number): number | undefined {
+  let low = 0;
+  let high = starts.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (starts[mid]! < min) low = mid + 1;
+    else high = mid;
+  }
+  return starts[low];
+}
+
 /** Code span starting at `index` (a backtick). Returns the node data and the next index. */
 function codeSpanAt(
-  line: string,
+  ctx: InlineContext,
   index: number,
   limit: number,
 ): { start: number; end: number; next: number } | null {
+  const { line } = ctx;
   let runEnd = index;
   while (runEnd < limit && line[runEnd] === '`') runEnd++;
   const size = runEnd - index;
-  let cursor = runEnd;
-  while (cursor < limit) {
-    if (line[cursor] !== '`') {
-      cursor++;
-      continue;
-    }
-    let closeEnd = cursor;
-    while (closeEnd < limit && line[closeEnd] === '`') closeEnd++;
-    if (closeEnd - cursor === size) {
-      let start = runEnd;
-      let end = cursor;
-      const inner = line.slice(start, end);
-      if (inner.length > 1 && inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '') {
-        start++;
-        end--;
-      }
-      return { start, end, next: closeEnd };
-    }
-    cursor = closeEnd;
+  // The span closes at the next maximal run of exactly the same length.
+  const cursor = firstAtLeast(ctx.runs.get(size) ?? [], runEnd);
+  if (cursor === undefined || cursor + size > limit) return null;
+  let start = runEnd;
+  let end = cursor;
+  const inner = line.slice(start, end);
+  if (inner.length > 1 && inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '') {
+    start++;
+    end--;
   }
-  return null;
+  return { start, end, next: cursor + size };
 }
 
-function scanInline(line: string, lineNo: number, from: number, to: number, nodes: MarkdownNode[]): void {
+function scanInline(
+  ctx: InlineContext,
+  lineNo: number,
+  from: number,
+  to: number,
+  nodes: MarkdownNode[],
+): void {
+  const { line } = ctx;
   let i = from;
   while (i < to) {
     const ch = line[i]!;
@@ -234,7 +322,7 @@ function scanInline(line: string, lineNo: number, from: number, to: number, node
     }
 
     if (ch === '`') {
-      const code = codeSpanAt(line, i, to);
+      const code = codeSpanAt(ctx, i, to);
       if (code) {
         const content = span(line, lineNo, code.start, code.end);
         nodes.push({ type: 'inline-code', position: content.position, content });
@@ -248,7 +336,7 @@ function scanInline(line: string, lineNo: number, from: number, to: number, node
     if (ch === '[' || (ch === '!' && line[i + 1] === '[')) {
       const image = ch === '!';
       const open = image ? i + 1 : i;
-      const link = linkAt(line, open, to);
+      const link = linkAt(ctx, open, to);
       if (link) {
         const destination = span(line, lineNo, link.destStart, link.destEnd);
         nodes.push({
@@ -257,7 +345,7 @@ function scanInline(line: string, lineNo: number, from: number, to: number, node
           position: destination.position,
           destination,
         });
-        scanInline(line, lineNo, open + 1, link.labelEnd, nodes);
+        scanInline(ctx, lineNo, open + 1, link.labelEnd, nodes);
         i = link.next;
       } else {
         i = open + 1;
@@ -266,16 +354,20 @@ function scanInline(line: string, lineNo: number, from: number, to: number, node
     }
 
     if (ch === '<') {
-      const rest = line.slice(i, to);
-      const auto = AUTOLINK_RE.exec(rest);
-      if (auto) {
+      // Sticky matches on the whole line avoid copying the rest of it at every `<`;
+      // a match that would run past `to` is rejected, as if the line ended there.
+      AUTOLINK_RE.lastIndex = i;
+      const auto = AUTOLINK_RE.exec(line);
+      if (auto && i + auto[0].length <= to) {
         const destination = span(line, lineNo, i + 1, i + 1 + auto[1]!.length);
         nodes.push({ type: 'link', syntax: 'autolink', position: destination.position, destination });
         i += auto[0].length;
         continue;
       }
-      const tag = ANCHOR_TAG_RE.exec(rest);
-      if (tag) {
+      const close = nextIndexOf(ctx, '>', i);
+      ANCHOR_TAG_RE.lastIndex = i;
+      const tag = close !== -1 && close < to ? ANCHOR_TAG_RE.exec(line) : null;
+      if (tag && i + tag[0].length <= to) {
         for (const attr of tag[0].matchAll(ANCHOR_ATTRIBUTE_RE)) {
           const range = attr.indices?.[2] ?? attr.indices?.[3];
           if (!range) continue;
@@ -296,23 +388,33 @@ function scanInline(line: string, lineNo: number, from: number, to: number, node
   }
 }
 
-/** Parses `[label](destination "title")` whose `[` is at `open`. */
-function linkAt(
-  line: string,
-  open: number,
-  limit: number,
-): { labelEnd: number; destStart: number; destEnd: number; next: number } | null {
-  let depth = 1;
+/**
+ * The `]` that closes the `[` at `open` (skipping escapes and code spans), or -1.
+ *
+ * The walk from one `[` visits a fixed sequence of positions, and the walk from
+ * any `[` it passes is the rest of that same sequence, so one walk settles every
+ * `[` on its way. A line of unmatched `[` is therefore walked once, not once per `[`.
+ */
+function closeOf(ctx: InlineContext, open: number, limit: number): number {
+  let closes = ctx.closes.get(limit);
+  if (!closes) {
+    closes = new Map();
+    ctx.closes.set(limit, closes);
+  }
+  const known = closes.get(open);
+  if (known !== undefined) return known;
+
+  const { line } = ctx;
+  const pending = [open];
   let i = open + 1;
-  let close = -1;
-  while (i < limit) {
+  while (i < limit && pending.length > 0) {
     const ch = line[i]!;
     if (ch === '\\') {
       i += 2;
       continue;
     }
     if (ch === '`') {
-      const code = codeSpanAt(line, i, limit);
+      const code = codeSpanAt(ctx, i, limit);
       if (code) {
         i = code.next;
       } else {
@@ -320,16 +422,22 @@ function linkAt(
       }
       continue;
     }
-    if (ch === '[') depth++;
-    if (ch === ']') {
-      depth--;
-      if (depth === 0) {
-        close = i;
-        break;
-      }
-    }
+    if (ch === '[') pending.push(i);
+    if (ch === ']') closes.set(pending.pop()!, i);
     i++;
   }
+  for (const unmatched of pending) closes.set(unmatched, -1);
+  return closes.get(open)!;
+}
+
+/** Parses `[label](destination "title")` whose `[` is at `open`. */
+function linkAt(
+  ctx: InlineContext,
+  open: number,
+  limit: number,
+): { labelEnd: number; destStart: number; destEnd: number; next: number } | null {
+  const { line } = ctx;
+  const close = closeOf(ctx, open, limit);
   if (close === -1 || line[close + 1] !== '(') return null;
 
   let p = close + 2;
@@ -338,7 +446,7 @@ function linkAt(
   let destStart: number;
   let destEnd: number;
   if (line[p] === '<') {
-    const end = line.indexOf('>', p + 1);
+    const end = nextIndexOf(ctx, '>', p + 1);
     if (end === -1 || end >= limit) return null;
     destStart = p + 1;
     destEnd = end;
@@ -367,7 +475,7 @@ function linkAt(
   const titleOpen = line[p];
   if (titleOpen === '"' || titleOpen === "'" || titleOpen === '(') {
     const titleClose = titleOpen === '(' ? ')' : titleOpen;
-    const end = line.indexOf(titleClose, p + 1);
+    const end = nextIndexOf(ctx, titleClose, p + 1);
     if (end === -1 || end >= limit) return null;
     p = end + 1;
     while (p < limit && (line[p] === ' ' || line[p] === '\t')) p++;
@@ -387,22 +495,44 @@ export function scanMarkdown(content: string): MarkdownNode[] {
   let inComment = false;
   /** The previous line, when it could be the text of a setext heading. */
   let paragraph: TextSpan | null = null;
+  /** An open indented code block. */
+  let indented: Extract<MarkdownNode, { type: 'code-block' }> | null = null;
+  /** Whether the previous line lets an indented code block start (blank, heading, closed fence). */
+  let indentedMayStart = true;
+  /** Inside a list, indented text continues an item instead of starting code. */
+  let inList = false;
 
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     const lineNo = i + 1;
+    const blank = line.trim() === '';
+    const mayStartIndented = indentedMayStart && !inList;
+    indentedMayStart = blank || ATX_HEADING_RE.test(line);
+    if (LIST_ITEM_RE.test(line)) inList = true;
+    else if (!blank && indentWidth(line) === 0) inList = false;
 
     if (fence && block) {
       paragraph = null;
       if (isClosingFence(line, fence)) {
         fence = null;
         block = null;
+        indentedMayStart = true;
         continue;
       }
       let strip = 0;
       while (strip < fence.indent && line[strip] === ' ') strip++;
       block.lines.push(span(line, lineNo, strip, line.length));
       continue;
+    }
+
+    if (indented) {
+      if (blank) continue;
+      const content = indentedContentStart(line);
+      if (content !== -1) {
+        indented.lines.push(span(line, lineNo, content, line.length));
+        continue;
+      }
+      indented = null;
     }
 
     if (!inComment) {
@@ -416,6 +546,14 @@ export function scanMarkdown(content: string): MarkdownNode[] {
           lines: [],
         };
         nodes.push(block);
+        paragraph = null;
+        continue;
+      }
+      const content = mayStartIndented && !blank ? indentedContentStart(line) : -1;
+      if (content !== -1) {
+        const first = span(line, lineNo, content, line.length);
+        indented = { type: 'code-block', position: first.position, info: '', lines: [first] };
+        nodes.push(indented);
         paragraph = null;
         continue;
       }
@@ -456,6 +594,7 @@ export function scanMarkdown(content: string): MarkdownNode[] {
       paragraph = null;
     }
 
+    const inline = inlineContext(line);
     let cursor = 0;
     while (cursor < line.length) {
       if (inComment) {
@@ -470,10 +609,10 @@ export function scanMarkdown(content: string): MarkdownNode[] {
       }
       const start = line.indexOf('<!--', cursor);
       if (start === -1) {
-        scanInline(line, lineNo, cursor, line.length, nodes);
+        scanInline(inline, lineNo, cursor, line.length, nodes);
         cursor = line.length;
       } else {
-        scanInline(line, lineNo, cursor, start, nodes);
+        scanInline(inline, lineNo, cursor, start, nodes);
         inComment = true;
         cursor = start + 4;
       }

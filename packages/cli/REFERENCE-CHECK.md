@@ -39,9 +39,16 @@ The document is scanned for four sources. Positions are a 1-based line and a
    (`[id]: target`) and autolinks (`<https://…>`). The destination is taken as
    written, without its title.
 2. **Inline code** (on one line).
-3. **Fenced code blocks** (`` ``` `` or `~~~`, at any indentation; closed by a
-   fence of the same character and at least the same length; an unclosed fence
-   runs to the end of the document).
+3. **Code blocks**:
+   - fenced (`` ``` `` or `~~~`, at any indentation; closed by a fence of the
+     same character and at least the same length; an unclosed fence runs to the
+     end of the document);
+   - indented: a line indented by at least four columns (a tab counts as up to
+     four) starts a code block when the previous line is blank, a heading or a
+     closed fence, or at the start of the document, and the line is not inside a
+     list (there, indented text continues the item). The block continues over
+     indented and blank lines. A fence takes precedence over indentation. Links
+     and inline code inside a code block are literal text.
 4. **Scope fields of rules**: `globs`, `paths` and `applyTo` in the frontmatter
    of `scoped-rule` documents. Values may be a scalar, a quoted scalar, a flow
    list or a block list; a scalar is split on commas that are not inside braces.
@@ -52,9 +59,12 @@ references themselves.
 
 **Tokens in code.** Inline code and code block lines are split on whitespace and
 on `` " ' ` = ; | & < > ( ) ``. Leading `,` `:` and trailing `.` `,` `:` `!`
-are removed. A token is a candidate when it contains `/` or `\`, or ends with a
-known extension. Tokens that start with `-`, that have no letter or digit, or
-that are bare words (`npm`, `test`, `$HOME`) are not candidates.
+are removed. A trailing `:line` or `:line:column` after a known extension
+(`src/app.ts:42`) is not part of the path: the file is looked up without it, and
+the reference keeps its text as written. A token is a candidate when it contains
+`/` or `\`, or ends with a known extension. Tokens that start with `-`, that
+have no letter or digit, or that are bare words (`npm`, `test`, `$HOME`) are not
+candidates.
 
 **Known extensions:** `md mdc markdown mdx txt rst json jsonc yml yaml toml ini
 cfg xml html htm css scss js mjs cjs jsx ts mts cts tsx vue svelte py rb go rs
@@ -202,6 +212,8 @@ combined verdict:
 - Nothing outside the scanned root is read or followed.
 - The same files give the same report, in the same order (documents by path,
   occurrences by line and column).
+- Scanning time grows linearly with the length of a line, even on pathological
+  input (thousands of unmatched `[`, backticks or `<`).
 - Without `--references` the output is unchanged; with it, only the
   `references` field and section are added.
 
@@ -210,9 +222,8 @@ combined verdict:
 - Paths written in prose with an implicit context (a sub-folder named under its
   parent, a `foo.md` placeholder, range notation such as `level-0..4/`) are
   checked as written.
-- Indented (non-fenced) code blocks, constructs split across lines, block
-  quotes around fences, YAML block scalars and HTML entities in headings are not
-  parsed.
+- Constructs split across lines, block quotes around code blocks, YAML block
+  scalars and HTML entities in headings are not parsed.
 - Links that rely on a site generator dropping the `.md` extension are checked
   as written.
 - Only the OpenSpec layout is recognized. A literal copy of a template, a

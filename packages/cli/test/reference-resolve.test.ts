@@ -93,6 +93,13 @@ describe('files and directories', () => {
   });
 });
 
+describe('file:line references in code', () => {
+  test('the file is checked without its line suffix', () => {
+    expect(one('`src/index.ts:12`')).toMatchObject({ state: 'consistent', rawText: 'src/index.ts:12' });
+    expect(one('`src/nope.ts:3:1`')).toMatchObject({ state: 'inconsistent', reasonCode: 'target-missing' });
+  });
+});
+
 describe('bare names', () => {
   test('found at the root: consistent', () => {
     expect(one('`README.md`')).toMatchObject({ state: 'consistent', explicitPath: false });
