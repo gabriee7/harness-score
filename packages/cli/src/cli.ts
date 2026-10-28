@@ -30,6 +30,9 @@ Options:
   --config <file>      Load scan configuration from a JSON file
   --scope <scopes>     Include global harness scopes: user, system (comma-separated)
   --gate <mode>        Score used for --min-level: maturity (repo-only, default) or effective
+  --references         Also check the file, directory, glob and anchor references written in
+                       AGENTS.md, rules, skills and specs (informational: never changes the
+                       score, the level or the exit code)
   --quiet              Suppress the terminal report
   --version            Print version
   --help               Show this help
@@ -56,6 +59,7 @@ interface Args {
   configPath: string | null;
   scopeFlags: ScopeFlag[] | null;
   gate: GateMode | null;
+  references: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -70,6 +74,7 @@ function parseArgs(argv: string[]): Args {
     configPath: null,
     scopeFlags: null,
     gate: null,
+    references: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -86,6 +91,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--json':
         args.json = true;
+        break;
+      case '--references':
+        args.references = true;
         break;
       case '--quiet':
       case '-q':
@@ -207,7 +215,7 @@ try {
   fail(String(error).replace(/^Error: /, ''));
 }
 
-const report = buildReport(rootAbs, scanConfig);
+const report = buildReport(rootAbs, scanConfig, { references: args.references });
 
 let baseline: Report | null = null;
 let diff: ReturnType<typeof computeDiff> | null = null;
