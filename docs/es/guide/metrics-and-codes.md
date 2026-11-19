@@ -104,7 +104,7 @@ IDs estables — vinculados a remediación en [Medir y mejorar](./measure-and-im
 | SNS-01 | 6 | Test runner configurado (script en `package.json`, pytest, phpunit.xml, pest, go test, node --test, …) | [sns-01](./measure-and-improve#sns-01) |
 | SNS-02 | 5 | Linter configurado (eslint, biome, ruff, phpcs, rector, golangci-lint, …) | [sns-02](./measure-and-improve#sns-02) |
 | SNS-03 | 4 | Type checking configurado (tsconfig, mypy, pyright, ty, phpstan, psalm, …) | [sns-03](./measure-and-improve#sns-03) |
-| SNS-04 | 3 | Formatter configurado (prettier, black, pint, php-cs-fixer, gofmt, …) | [sns-04](./measure-and-improve#sns-04) |
+| SNS-04 | 3 | Formatter configurado (prettier, oxfmt, black, pint, php-cs-fixer, gofmt, …) | [sns-04](./measure-and-improve#sns-04) |
 | SNS-05 | 2 | Al menos un archivo de test existe en el árbol | [sns-05](./measure-and-improve#sns-05) |
 
 ### CI Feedback
@@ -206,6 +206,7 @@ recorre ni se lee.
 | `--gate maturity\|effective` | Puntaje usado para `--min-level` |
 | `--min-level <0-4>` | Exit 1 cuando el puntaje gated completo está bajo el nivel; un snapshot seleccionado por el gate incompleto retorna exit 2 |
 | `--json` | Reporte completo incluyendo `scopes`, `gate`, `effective` y `verdicts` |
+| `--references` | También verifica las referencias a archivos, directorios, globs y anclas escritas en `AGENTS.md`, reglas, skills y specs. Informativo: nunca cambia el puntaje, el nivel ni el exit code. Reglas: [`REFERENCE-CHECK.md`](https://github.com/paladini/harness-score/blob/main/packages/cli/REFERENCE-CHECK.md) |
 
 ## Inputs de GitHub Action
 
@@ -241,6 +242,7 @@ La Action publica outputs, badge y reporte de maturity solo cuando maturity est�
 | `checks[].applicable` | `false` cuando el check no aplica a este repositorio (HYG-05 con `license` de código cerrado, HYG-08 sin config MCP). Excluido del numerador y del denominador. El default es `true`. Omitido en reportes antiguos, lo que significa aplicable |
 | `checks[].severity` | `"off"` \| `"warn"` \| `"error"` — la severidad resuelta que este scan usó para ese check |
 | `checks[].warnings` | Diagnósticos opcionales y no fatales `{ code, message, source? }`; terminal y Markdown los muestran sin cambiar puntos |
+| `references` | Opcional; aparece solo con `--references`, como última clave. Cada elemento de `references.occurrences[]` tiene uno de cinco estados (`consistent`, `inconsistent`, `not-evaluable`, `not-supported`, `ambiguous`), con la regla y la evidencia. Nunca afecta `level`, `score` ni `checks` |
 
 `level`, `score`, dimensiones y checks siguen presentes para diagnóstico, pero son provisionales cuando su veredicto es `incomplete`. Terminal y Markdown identifican el snapshot no disponible. El badge siempre representa maturity y usa `incomplete`, nunca L0-L4, cuando maturity está incompleto. Los reportes antiguos sin `verdicts` se consideran completos cuando `truncated` es `false` e incompletos cuando es `true`.
 

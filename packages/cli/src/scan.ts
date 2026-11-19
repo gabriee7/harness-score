@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { filterGlob } from './references/glob.js';
 import type { ScanContext, ScanIncompleteReason } from './types.js';
 import { compareLexically } from './util.js';
 
@@ -44,6 +45,7 @@ const MAX_FILES = 1_000_000;
 /** Never read file bodies larger than this (binary/artifact protection). */
 const MAX_READ_BYTES = 512 * 1024;
 
+/** Additional files made visible to the effective scan. */
 export interface ScanOverlay {
   label: string;
   /** Repo-relative path → absolute path for reading (repo wins on conflict). */
@@ -52,6 +54,7 @@ export interface ScanOverlay {
   incompleteReasons?: ScanIncompleteReason[];
 }
 
+/** Filesystem discovery and overlay options for a scan context. */
 export interface CreateScanOptions {
   overlays?: ScanOverlay[];
   /** Exact repo-relative paths to scan inside directories otherwise skipped. */
@@ -255,18 +258,29 @@ function buildContext(
     if (!fileSet.has(rel)) fileSet.add(rel);
   }
   const files = [...fileSet].sort();
+  const dirSet = new Set<string>();
+  for (const f of files) {
+    for (let i = f.indexOf('/'); i !== -1; i = f.indexOf('/', i + 1)) {
+      dirSet.add(f.slice(0, i));
+    }
+  }
   const contentCache = new Map<string, string | null>();
   const matchCache = new Map<string, string[]>();
+  const globCache = new Map<string, string[] | null>();
 
   return {
     root,
     files,
+    overlayFiles: new Set([...overlayAbsByRel.keys()].filter((rel) => !repoSet.has(rel))),
     get truncated(): boolean {
       return incompleteReasons.length > 0;
     },
     incompleteReasons,
     has(relPath: string): boolean {
       return fileSet.has(relPath);
+    },
+    hasDirectory(relPath: string): boolean {
+      return dirSet.has(relPath);
     },
     read(relPath: string): string | null {
       if (contentCache.has(relPath)) return contentCache.get(relPath)!;
@@ -304,9 +318,16 @@ function buildContext(
       matchCache.set(key, result);
       return result;
     },
+    matchingGlob(pattern: string): string[] | null {
+      if (globCache.has(pattern)) return globCache.get(pattern)!;
+      const result = filterGlob(pattern, files);
+      globCache.set(pattern, result);
+      return result;
+    },
   };
 }
 
+/** Build a synchronous, cached filesystem view for checks to inspect. */
 export function createScanContext(rootInput: string, options: CreateScanOptions = {}): ScanContext {
   const root = path.resolve(rootInput);
   const {

@@ -1,10 +1,15 @@
+import type { ReferenceState, ResolvedReference, SourceArtifactKind } from './references/types.js';
+
+/** Stable identifiers for the six dimensions of the maturity model. */
 export type DimensionId = 'context' | 'skills' | 'hooks' | 'sensors' | 'ci' | 'hygiene';
 
+/** Display metadata for a maturity dimension. */
 export interface DimensionInfo {
   id: DimensionId;
   title: string;
 }
 
+/** Display metadata for the maturity dimensions in report order. */
 export const DIMENSIONS: DimensionInfo[] = [
   { id: 'context', title: 'Context & Guides' },
   { id: 'skills', title: 'Skills & Commands' },
@@ -20,16 +25,22 @@ export interface ScanContext {
   root: string;
   /** All file paths relative to root, POSIX separators, sorted. */
   files: string[];
+  /** Paths supplied by user/system/extra-root overlays rather than the repository tree. */
+  overlayFiles?: ReadonlySet<string>;
   /** Compatibility alias: true whenever the scan is incomplete for any reason. */
   truncated: boolean;
   /** Deterministic reasons the filesystem walk or a requested file read could not complete. */
   incompleteReasons?: ScanIncompleteReason[];
   /** True when the relative path exists as a file. */
   has(relPath: string): boolean;
+  /** True when at least one scanned file lives under the relative directory path. Empty directories are not detected. Optional for custom contexts; derived from `files` when absent. */
+  hasDirectory?(relPath: string): boolean;
   /** File content as UTF-8, or null when missing/unreadable/over the read limit. Cached. */
   read(relPath: string): string | null;
   /** All files whose relative path matches the regex. */
   matching(re: RegExp): string[];
+  /** Files matching a glob pattern, or null when the pattern uses unsupported syntax. Optional for custom contexts; derived from `files` when absent. */
+  matchingGlob?(pattern: string): string[] | null;
 }
 
 /** Non-fatal diagnostic attached to a check result. */
@@ -39,6 +50,7 @@ export interface ScanDiagnostic {
   source?: string;
 }
 
+/** Machine-readable reason why a scan could not be completed. */
 export type ScanIncompleteReasonCode =
   | 'file-count-limit'
   | 'depth-limit'
@@ -46,19 +58,23 @@ export type ScanIncompleteReasonCode =
   | 'unreadable-path'
   | 'outside-root-symlink';
 
+/** Details of an incomplete filesystem scan. */
 export interface ScanIncompleteReason {
   code: ScanIncompleteReasonCode;
   path?: string;
   limit?: number;
 }
 
+/** Whether a snapshot can be treated as authoritative. */
 export type ScanVerdictStatus = 'complete' | 'incomplete';
 
+/** Completeness of a snapshot and the reasons for any incomplete scan. */
 export interface ScanVerdict {
   status: ScanVerdictStatus;
   reasons: ScanIncompleteReason[];
 }
 
+/** Result returned by a check before scoring and configuration are applied. */
 export interface CheckOutcome {
   passed: boolean;
   /** Human-readable proof: what was found (or not found) and where. */
@@ -72,6 +88,7 @@ export interface CheckOutcome {
   warnings?: ScanDiagnostic[];
 }
 
+/** Definition of a synchronous, deterministic maturity check. */
 export interface Check {
   /** Stable id like "CTX-01"; doubles as the docs anchor (lowercased). */
   id: string;
@@ -83,6 +100,7 @@ export interface Check {
   run(ctx: ScanContext): CheckOutcome;
 }
 
+/** Scored result and evidence for one check. */
 export interface CheckResult {
   id: string;
   dimension: DimensionId;
@@ -105,6 +123,7 @@ export interface CheckResult {
   warnings?: ScanDiagnostic[];
 }
 
+/** Points and applicability for a single maturity dimension. */
 export interface DimensionScore {
   id: DimensionId;
   title: string;
@@ -116,6 +135,7 @@ export interface DimensionScore {
   applicable: boolean;
 }
 
+/** Attained maturity level and any gaps to the next level. */
 export interface LevelInfo {
   /** 0–4 */
   index: number;
@@ -149,6 +169,7 @@ export interface PresetInfo {
   resolved: Array<{ id: string; severity: Severity; source: string }>;
 }
 
+/** Complete scan report, including repository and effective snapshots. */
 export interface Report {
   tool: { name: string; version: string };
   root: string;
@@ -175,4 +196,65 @@ export interface Report {
   preset: PresetInfo;
   /** Extra repo-relative paths made visible inside normally skipped directories. */
   scan?: { includePaths: string[] };
+  /**
+   * Reference check of the operational documents. Present only when requested
+   * (`--references`); informational, never part of the score, level or exit code.
+   */
+  references?: ReferenceReport;
+}
+
+/** Outcome of checking the references written in a repository's operational documents. */
+export interface ReferenceReport {
+  summary: {
+    /** Operational documents whose references were checked. */
+    operationalDocuments: number;
+    /** Recognized documents left unchecked (illustrative or archived). */
+    skippedDocuments: number;
+    /** Operational documents that could not be read. */
+    unreadableDocuments: number;
+    occurrences: number;
+    byState: Record<ReferenceState, number>;
+    /** Occurrences per reason code, for every state that carries one. */
+    byReason: Record<string, number>;
+    /** False when the repository scan was incomplete. */
+    scanComplete: boolean;
+  };
+  /** Every reference occurrence, by document path and then position. */
+  occurrences: ResolvedReference[];
+  skipped: Array<{ path: string; kind: SourceArtifactKind; scope: 'illustrative' | 'archived' }>;
+  unreadable: string[];
+  /** Structural recognition of versioned specifications (OpenSpec). */
+  specifications: SpecificationReport;
+}
+
+/** Whether a specification document has the minimum content of a proposal, requirement, spec or task. */
+export type SpecificationContent = 'sufficient' | 'empty' | 'insufficient' | 'unreadable' | 'not-assessed';
+
+export type SpecificationStructureStatus = 'identified' | 'not-identified' | 'external';
+
+/**
+ * Three independent properties of a repository's versioned specifications:
+ * an identifiable structure, minimum content, and consistent internal
+ * references. There is no combined verdict and no score.
+ */
+export interface SpecificationReport {
+  structure: {
+    status: SpecificationStructureStatus;
+    convention: 'openspec' | null;
+    /** Spec documents, active change folders and archived change folders. */
+    parts: { specs: number; activeChanges: number; archivedChanges: number };
+  };
+  documents: Array<{
+    path: string;
+    scope: 'operational' | 'illustrative' | 'archived';
+    minimumContent: SpecificationContent;
+    references: { total: number; byState: Record<ReferenceState, number> };
+  }>;
+  properties: {
+    structure: SpecificationStructureStatus;
+    /** Counts over operational specification documents only. */
+    minimumContent: { sufficient: number; empty: number; insufficient: number; unreadable: number };
+    /** States of the references found in operational specification documents. */
+    referenceConsistency: Record<ReferenceState, number>;
+  };
 }
