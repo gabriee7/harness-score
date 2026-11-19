@@ -1,0 +1,47 @@
+name: macOS check of frozen commit 447ea16
+
+# Runs the repository checks on macOS against the exact commit evaluated in the
+# research benchmark. The commit itself is checked out unmodified.
+on:
+  push:
+    branches: [ci/macos-447ea16]
+
+env:
+  FROZEN_SHA: 447ea16bb9e9a256f426cb07b3e720f9603a0b51
+
+jobs:
+  macos:
+    name: checks (macos-latest, Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.FROZEN_SHA }}
+      - name: Confirm the checked-out commit
+        run: |
+          test "$(git rev-parse HEAD)" = "$FROZEN_SHA"
+          git log -1 --format='%H %s'
+          sw_vers
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Test (npm test)
+        run: npm test
+      - name: Lint (biome)
+        run: npm run lint
+      - name: Coverage gate
+        run: npm run test:coverage
+      - name: Self-audit (npm run scan)
+        run: npm run scan
+      - name: Reference check runs
+        run: node packages/cli/dist/cli.js . --references --json > "$RUNNER_TEMP/references.json" && node -e "const r=require(process.argv[1]); if(!r.references) process.exit(1); console.log(JSON.stringify(r.references.summary))" "$RUNNER_TEMP/references.json"
+      - name: Tree unchanged
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)"
